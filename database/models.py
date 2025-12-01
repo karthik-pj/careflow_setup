@@ -54,7 +54,7 @@ class Floor(Base):
 
 
 class Gateway(Base):
-    """Moko BLE to WiFi Gateway Mini 03 configuration"""
+    """Careflow BLE Gateway configuration"""
     __tablename__ = 'gateways'
     
     id = Column(Integer, primary_key=True)

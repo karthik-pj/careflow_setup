@@ -104,9 +104,9 @@ def render():
             setup_steps.append("~~1. Create a building and upload floor plans~~ ✓")
         
         if gateway_count == 0:
-            setup_steps.append("2. Add your Moko BLE Gateways with their positions")
+            setup_steps.append("2. Add your Careflow BLE Gateways with their positions")
         else:
-            setup_steps.append("~~2. Add your Moko BLE Gateways with their positions~~ ✓")
+            setup_steps.append("~~2. Add your Careflow BLE Gateways with their positions~~ ✓")
         
         if beacon_count == 0:
             setup_steps.append("3. Register your BLE Beacons")

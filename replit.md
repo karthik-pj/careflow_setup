@@ -1,13 +1,13 @@
-# BLE Indoor Positioning System
+# Careflow BLE Indoor Positioning System
 
 ## Overview
-A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gateway Mini 03 devices, BLE beacons, and real-time location tracking with triangulation on floor plans.
+A Streamlit-based indoor positioning system for managing Careflow BLE Gateway devices, BLE beacons, and real-time location tracking with triangulation on floor plans.
 
 ## Features
 
 ### Core Features
 - **Building Management**: Create buildings with GPS coordinates and multi-story floor plans
-- **Gateway Configuration**: Set up Moko BLE gateways with precise positioning and calibration
+- **Gateway Configuration**: Set up Careflow BLE gateways with precise positioning and calibration
 - **Beacon Registration**: Register BLE beacons with resource types (Device, Staff, Asset, etc.)
 - **MQTT Integration**: Connect to MQTT broker for receiving real-time RSSI signals
 - **Triangulation Engine**: Calculate beacon positions from multiple gateway signals using weighted least squares
@@ -50,7 +50,7 @@ A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gatewa
 ## Database Schema
 - **Buildings**: Building information with GPS coordinates
 - **Floors**: Floor plans with dimensions and images
-- **Gateways**: Moko BLE gateway configurations with positions
+- **Gateways**: Careflow BLE gateway configurations with positions
 - **Beacons**: BLE beacon registrations with resource types
 - **RSSISignals**: Raw RSSI signal data from gateways
 - **Positions**: Calculated beacon positions with velocity vectors
@@ -61,7 +61,7 @@ A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gatewa
 
 ## Setup Steps
 1. Add a building with floor plans
-2. Configure Moko BLE gateways with their positions on floor plans
+2. Configure Careflow BLE gateways with their positions on floor plans
 3. Register BLE beacons to track
 4. Configure MQTT broker connection (set password in Secrets tab)
 5. Start signal processor and begin live tracking
@@ -83,9 +83,16 @@ A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gatewa
 - Password is referenced by environment variable name (e.g., MQTT_PASSWORD)
 - Set the actual password as a Secret in the Secrets tab
 
+## Branding
+- Logo: Careflow logo displayed in sidebar (attached_assets/careflow_logo.png)
+- Color Scheme: Careflow Blue (#2e5cbf, #008ed3)
+- Font: Inter (Google Fonts)
+- Theme configured in .streamlit/config.toml
+
 ## Recent Changes
 - December 2025: Initial implementation with full feature set
 - December 2025: Fixed database session management with context managers
 - December 2025: Added background signal processor for automatic data ingestion
 - December 2025: Improved MQTT credential security using environment variables
 - December 2025: Added Phase 2 features (history playback, zones/alerts, analytics, import/export, calibration)
+- December 2025: Updated branding from Moko to Careflow with logo and color scheme

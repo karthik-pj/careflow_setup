@@ -12,7 +12,7 @@ def validate_mac_address(mac: str) -> bool:
 
 def render():
     st.title("Gateway Configuration")
-    st.markdown("Configure Moko BLE to WiFi Gateway Mini 03 devices")
+    st.markdown("Configure Careflow BLE Gateway devices")
     
     with get_db_session() as session:
         buildings = session.query(Building).order_by(Building.name).all()
@@ -47,7 +47,7 @@ def render():
                 mac_address = st.text_input(
                     "MAC Address*",
                     placeholder="AA:BB:CC:DD:EE:FF",
-                    help="The MAC address of the Moko gateway"
+                    help="The MAC address of the Careflow gateway"
                 ).upper()
                 
                 name = st.text_input(

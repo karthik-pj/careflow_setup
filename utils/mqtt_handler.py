@@ -97,7 +97,7 @@ class MQTTHandler:
     
     def _parse_message(self, topic: str, payload: bytes) -> Optional[MQTTMessage]:
         """
-        Parse incoming MQTT message from Moko gateway.
+        Parse incoming MQTT message from Careflow gateway.
         
         Expected message format (JSON):
         {

@@ -1,12 +1,70 @@
 import streamlit as st
 from database import init_db
+import base64
+from pathlib import Path
 
 st.set_page_config(
-    page_title="BLE Indoor Positioning System",
+    page_title="Careflow BLE Indoor Positioning",
     page_icon="📍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    .careflow-subtitle {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.75rem;
+        color: #666;
+        margin-top: 5px;
+        letter-spacing: 0.5px;
+    }
+    
+    .stApp {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .stSidebar {
+        background-color: #f8fafc;
+    }
+    
+    .stSidebar .stRadio > label {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    div[data-testid="stSidebarHeader"] {
+        padding-top: 1rem;
+    }
+    
+    .main-header {
+        color: #2e5cbf;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .stButton > button {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .stMetric {
+        background-color: #f8fafc;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #2e5cbf;
+    }
+    
+    .logo-container {
+        padding: 10px 0;
+        margin-bottom: 10px;
+    }
+    
+    .logo-container img {
+        max-width: 180px;
+        height: auto;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 try:
     init_db()
@@ -32,7 +90,24 @@ if not st.session_state['processor_init_attempted']:
     except Exception as e:
         st.session_state['processor_init_attempted'] = True
 
-st.sidebar.title("BLE Positioning System")
+logo_path = Path("attached_assets/careflow_logo.png")
+if logo_path.exists():
+    with open(logo_path, "rb") as f:
+        logo_data = base64.b64encode(f.read()).decode()
+    st.sidebar.markdown(
+        f'<div class="logo-container"><img src="data:image/png;base64,{logo_data}" alt="Careflow"></div>',
+        unsafe_allow_html=True
+    )
+else:
+    st.sidebar.markdown(
+        '<div style="font-family: Inter, sans-serif; font-size: 1.8rem; font-weight: 700; '
+        'background: linear-gradient(135deg, #2e5cbf 0%, #008ed3 100%); '
+        '-webkit-background-clip: text; -webkit-text-fill-color: transparent; '
+        'background-clip: text; margin-bottom: 0.5rem;">CareFlow</div>',
+        unsafe_allow_html=True
+    )
+
+st.sidebar.markdown('<div class="careflow-subtitle">BLE Indoor Positioning</div>', unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
@@ -67,7 +142,7 @@ except Exception:
     st.sidebar.info("Signal Processor: Not initialized")
 
 st.sidebar.markdown("---")
-st.sidebar.info("Moko BLE Gateway Mini 03 Indoor Positioning System")
+st.sidebar.caption("Careflow BLE Gateway System")
 
 if page == "Dashboard":
     from views import dashboard

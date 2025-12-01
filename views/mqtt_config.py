@@ -183,7 +183,7 @@ def render():
         st.subheader("Expected Message Format")
         
         st.markdown("""
-        The system expects MQTT messages from Moko gateways in JSON format:
+        The system expects MQTT messages from Careflow gateways in JSON format:
         
         ```json
         {
