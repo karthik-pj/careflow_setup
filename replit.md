@@ -84,7 +84,7 @@ A Streamlit-based indoor positioning system for managing Careflow BLE Gateway de
 - Set the actual password as a Secret in the Secrets tab
 
 ## Branding
-- Logo: Careflow logo displayed in sidebar (attached_assets/careflow_logo.png)
+- Logo: Careflow horizontal logo displayed in sidebar (attached_assets/CAREFLOW LOGO-Color_1764612034940.png)
 - Color Scheme: Careflow Blue (#2e5cbf, #008ed3)
 - Font: Inter (Google Fonts)
 - Theme configured in .streamlit/config.toml

@@ -55,12 +55,13 @@ st.markdown("""
     }
     
     .logo-container {
-        padding: 10px 0;
-        margin-bottom: 10px;
+        padding: 15px 0;
+        margin-bottom: 5px;
     }
     
     .logo-container img {
-        max-width: 180px;
+        width: 100%;
+        max-width: 200px;
         height: auto;
     }
 </style>
@@ -90,7 +91,7 @@ if not st.session_state['processor_init_attempted']:
     except Exception as e:
         st.session_state['processor_init_attempted'] = True
 
-logo_path = Path("attached_assets/careflow_logo.png")
+logo_path = Path("attached_assets/CAREFLOW LOGO-Color_1764612034940.png")
 if logo_path.exists():
     with open(logo_path, "rb") as f:
         logo_data = base64.b64encode(f.read()).decode()
