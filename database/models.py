@@ -38,8 +38,8 @@ class Floor(Base):
     name = Column(String(255))
     floor_plan_image = Column(LargeBinary)
     floor_plan_filename = Column(String(255))
-    width_meters = Column(Float)
-    height_meters = Column(Float)
+    width_meters = Column(Float, default=50.0)
+    height_meters = Column(Float, default=50.0)
     origin_x = Column(Float, default=0)
     origin_y = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -49,6 +49,8 @@ class Floor(Base):
     gateways = relationship("Gateway", back_populates="floor", cascade="all, delete-orphan")
     beacons = relationship("Beacon", back_populates="floor", cascade="all, delete-orphan")
     positions = relationship("Position", back_populates="floor", cascade="all, delete-orphan")
+    zones = relationship("Zone", back_populates="floor", cascade="all, delete-orphan")
+    calibration_points = relationship("CalibrationPoint", back_populates="floor", cascade="all, delete-orphan")
 
 
 class Gateway(Base):
@@ -155,6 +157,64 @@ class MQTTConfig(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Zone(Base):
+    """Geofencing zone definition"""
+    __tablename__ = 'zones'
+    
+    id = Column(Integer, primary_key=True)
+    floor_id = Column(Integer, ForeignKey('floors.id'), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    zone_type = Column(String(50), default='rectangle')
+    x_min = Column(Float, nullable=False)
+    y_min = Column(Float, nullable=False)
+    x_max = Column(Float, nullable=False)
+    y_max = Column(Float, nullable=False)
+    color = Column(String(20), default='#FF0000')
+    alert_on_enter = Column(Boolean, default=True)
+    alert_on_exit = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    floor = relationship("Floor", back_populates="zones")
+    alerts = relationship("ZoneAlert", back_populates="zone", cascade="all, delete-orphan")
+
+
+class ZoneAlert(Base):
+    """Zone entry/exit alert events"""
+    __tablename__ = 'zone_alerts'
+    
+    id = Column(Integer, primary_key=True)
+    zone_id = Column(Integer, ForeignKey('zones.id'), nullable=False)
+    beacon_id = Column(Integer, ForeignKey('beacons.id'), nullable=False)
+    alert_type = Column(String(20), nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    x_position = Column(Float)
+    y_position = Column(Float)
+    acknowledged = Column(Boolean, default=False)
+    
+    zone = relationship("Zone", back_populates="alerts")
+
+
+class CalibrationPoint(Base):
+    """Calibration reference points for accuracy improvement"""
+    __tablename__ = 'calibration_points'
+    
+    id = Column(Integer, primary_key=True)
+    floor_id = Column(Integer, ForeignKey('floors.id'), nullable=False)
+    beacon_id = Column(Integer, ForeignKey('beacons.id'), nullable=False)
+    known_x = Column(Float, nullable=False)
+    known_y = Column(Float, nullable=False)
+    measured_x = Column(Float)
+    measured_y = Column(Float)
+    error_distance = Column(Float)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    is_verified = Column(Boolean, default=False)
+    
+    floor = relationship("Floor", back_populates="calibration_points")
 
 
 def get_engine():

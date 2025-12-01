@@ -44,6 +44,11 @@ page = st.sidebar.radio(
         "Beacons",
         "MQTT Configuration",
         "Live Tracking",
+        "History Playback",
+        "Zones & Alerts",
+        "Analytics",
+        "Import/Export",
+        "Calibration",
         "Signal Monitor"
     ],
     index=0
@@ -65,23 +70,38 @@ st.sidebar.markdown("---")
 st.sidebar.info("Moko BLE Gateway Mini 03 Indoor Positioning System")
 
 if page == "Dashboard":
-    from pages import dashboard
+    from views import dashboard
     dashboard.render()
 elif page == "Buildings & Floor Plans":
-    from pages import buildings
+    from views import buildings
     buildings.render()
 elif page == "Gateways":
-    from pages import gateways
+    from views import gateways
     gateways.render()
 elif page == "Beacons":
-    from pages import beacons
+    from views import beacons
     beacons.render()
 elif page == "MQTT Configuration":
-    from pages import mqtt_config
+    from views import mqtt_config
     mqtt_config.render()
 elif page == "Live Tracking":
-    from pages import live_tracking
+    from views import live_tracking
     live_tracking.render()
+elif page == "History Playback":
+    from views import history_playback
+    history_playback.render()
+elif page == "Zones & Alerts":
+    from views import zones_alerts
+    zones_alerts.render()
+elif page == "Analytics":
+    from views import analytics
+    analytics.render()
+elif page == "Import/Export":
+    from views import import_export
+    import_export.render()
+elif page == "Calibration":
+    from views import calibration
+    calibration.render()
 elif page == "Signal Monitor":
-    from pages import signal_monitor
+    from views import signal_monitor
     signal_monitor.render()

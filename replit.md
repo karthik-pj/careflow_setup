@@ -4,6 +4,8 @@
 A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gateway Mini 03 devices, BLE beacons, and real-time location tracking with triangulation on floor plans.
 
 ## Features
+
+### Core Features
 - **Building Management**: Create buildings with GPS coordinates and multi-story floor plans
 - **Gateway Configuration**: Set up Moko BLE gateways with precise positioning and calibration
 - **Beacon Registration**: Register BLE beacons with resource types (Device, Staff, Asset, etc.)
@@ -13,19 +15,31 @@ A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gatewa
 - **Signal Monitor**: Debug and monitor incoming signals with manual testing capability
 - **Background Processing**: Automatic signal ingestion and position calculation in background thread
 
+### Phase 2 Features
+- **Historical Playback**: Replay beacon movement patterns from historical data with adjustable speed
+- **Zones & Alerts**: Define geofencing zones and monitor entry/exit alerts with acknowledgment
+- **Analytics Dashboard**: Heatmaps, dwell time analysis, and traffic patterns by hour
+- **Import/Export**: Bulk import and export of gateway, beacon, and zone configurations (JSON/CSV)
+- **Calibration Wizard**: Improve triangulation accuracy using known beacon positions
+
 ## Project Structure
 ```
 ├── app.py                    # Main Streamlit application
 ├── database/
 │   ├── __init__.py          # Database exports
 │   └── models.py            # SQLAlchemy models with context manager
-├── pages/
+├── views/                    # Named 'views' to avoid Streamlit multipage detection
 │   ├── dashboard.py         # System overview
 │   ├── buildings.py         # Building and floor plan management
 │   ├── gateways.py          # Gateway configuration
 │   ├── beacons.py           # Beacon registration
 │   ├── mqtt_config.py       # MQTT broker settings
 │   ├── live_tracking.py     # Real-time visualization
+│   ├── history_playback.py  # Historical playback with timeline controls
+│   ├── zones_alerts.py      # Geofencing zones and alert management
+│   ├── analytics.py         # Heatmaps, dwell time, traffic patterns
+│   ├── import_export.py     # Bulk import/export functionality
+│   ├── calibration.py       # Calibration wizard and accuracy analysis
 │   └── signal_monitor.py    # Signal debugging
 └── utils/
     ├── triangulation.py     # Position calculation algorithms
@@ -41,6 +55,9 @@ A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gatewa
 - **RSSISignals**: Raw RSSI signal data from gateways
 - **Positions**: Calculated beacon positions with velocity vectors
 - **MQTTConfig**: MQTT broker connection settings (password stored as env var reference)
+- **Zones**: Geofencing zone definitions with alert configuration
+- **ZoneAlerts**: Zone entry/exit alert events with acknowledgment status
+- **CalibrationPoints**: Reference points for accuracy improvement
 
 ## Setup Steps
 1. Add a building with floor plans
@@ -48,6 +65,8 @@ A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gatewa
 3. Register BLE beacons to track
 4. Configure MQTT broker connection (set password in Secrets tab)
 5. Start signal processor and begin live tracking
+6. (Optional) Define zones for geofencing alerts
+7. (Optional) Create calibration points to improve accuracy
 
 ## Technical Notes
 - Database sessions use context managers to prevent connection leaks
@@ -57,6 +76,7 @@ A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gatewa
 - Movement vectors calculated from sequential position updates
 - Floor plans support image overlay with coordinate mapping
 - MQTT passwords stored securely via environment variable references
+- Zone alerts are deduplicated within 30-second windows
 
 ## Security
 - MQTT passwords are NOT stored in database
@@ -68,3 +88,4 @@ A Streamlit-based indoor positioning system for managing Moko BLE to WiFi Gatewa
 - December 2025: Fixed database session management with context managers
 - December 2025: Added background signal processor for automatic data ingestion
 - December 2025: Improved MQTT credential security using environment variables
+- December 2025: Added Phase 2 features (history playback, zones/alerts, analytics, import/export, calibration)
