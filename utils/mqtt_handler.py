@@ -76,9 +76,12 @@ class MQTTHandler:
         if reason_code == 0:
             self.is_connected = True
             self.last_error = None
-            topic = f"{self.topic_prefix}#"
-            client.subscribe(topic)
-            print(f"Connected to MQTT broker, subscribed to {topic}")
+            if self.topic_prefix:
+                topic = f"{self.topic_prefix}#"
+                client.subscribe(topic)
+                print(f"Connected to MQTT broker, subscribed to {topic}")
+            else:
+                print(f"Connected to MQTT broker (no subscription - publish only)")
         else:
             self.is_connected = False
             self.last_error = f"Connection failed with code: {reason_code}"

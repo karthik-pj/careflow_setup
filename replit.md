@@ -43,7 +43,8 @@ A Streamlit-based indoor positioning system for managing Careflow BLE Gateway de
 │   └── signal_monitor.py    # Signal debugging
 └── utils/
     ├── triangulation.py     # Position calculation algorithms
-    ├── mqtt_handler.py      # MQTT client handler
+    ├── mqtt_handler.py      # MQTT client handler (subscription)
+    ├── mqtt_publisher.py    # MQTT publisher for positions/alerts
     └── signal_processor.py  # Background signal processing
 ```
 
@@ -68,6 +69,38 @@ A Streamlit-based indoor positioning system for managing Careflow BLE Gateway de
 6. (Optional) Define zones for geofencing alerts
 7. (Optional) Create calibration points to improve accuracy
 
+## MQTT Publishing
+The system can publish beacon positions and zone alerts to MQTT for integration with other applications:
+
+### Position Messages (Topic: careflow/positions/{beacon_mac})
+```json
+{
+  "type": "position",
+  "beacon": {"mac": "AA:BB:CC:DD:EE:FF", "name": "Beacon Name", "resource_type": "Staff"},
+  "location": {"floor_id": 1, "floor_name": "Floor 1", "building_name": "Building A", "x": 10.5, "y": 20.3, "accuracy": 2.5},
+  "movement": {"speed": 0.5, "heading": 45.0, "velocity_x": 0.3, "velocity_y": 0.4},
+  "timestamp": "2025-12-02T14:00:00.000Z"
+}
+```
+
+### Alert Messages (Topic: careflow/alerts/{alert_type}/{zone_id})
+```json
+{
+  "type": "zone_alert",
+  "alert_type": "entry",
+  "beacon": {"mac": "AA:BB:CC:DD:EE:FF", "name": "Beacon Name", "resource_type": "Staff"},
+  "zone": {"id": 1, "name": "Restricted Area", "floor_name": "Floor 1"},
+  "position": {"x": 10.5, "y": 20.3},
+  "timestamp": "2025-12-02T14:00:00.000Z"
+}
+```
+
+### Publisher Architecture
+- Thread-safe singleton with async message queue
+- Separate paho-mqtt client from subscription handler
+- Non-blocking publish calls (queue with 1000 message capacity)
+- Automatic connection management with callbacks
+
 ## Technical Notes
 - Database sessions use context managers to prevent connection leaks
 - Signal processor runs in background thread for continuous data ingestion
@@ -77,6 +110,7 @@ A Streamlit-based indoor positioning system for managing Careflow BLE Gateway de
 - Floor plans support image overlay with coordinate mapping
 - MQTT passwords stored securely via environment variable references
 - Zone alerts are deduplicated within 30-second windows
+- MQTT publisher uses async queue to avoid blocking DB transactions
 
 ## Security
 - MQTT passwords are NOT stored in database
@@ -96,3 +130,4 @@ A Streamlit-based indoor positioning system for managing Careflow BLE Gateway de
 - December 2025: Improved MQTT credential security using environment variables
 - December 2025: Added Phase 2 features (history playback, zones/alerts, analytics, import/export, calibration)
 - December 2025: Updated branding from Moko to Careflow with logo and color scheme
+- December 2025: Added MQTT publishing for beacon positions and zone alerts with async queue architecture
