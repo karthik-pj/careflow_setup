@@ -161,6 +161,9 @@ class MQTTConfig(Base):
     use_tls = Column(Boolean, default=False)
     ca_cert_path = Column(String(500))
     is_active = Column(Boolean, default=True)
+    publish_enabled = Column(Boolean, default=False)
+    publish_positions_topic = Column(String(255), default='careflow/positions')
+    publish_alerts_topic = Column(String(255), default='careflow/alerts')
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
