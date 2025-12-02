@@ -108,7 +108,7 @@ else:
         unsafe_allow_html=True
     )
 
-st.sidebar.markdown('<div class="careflow-subtitle">Careflow Setup</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="careflow-subtitle" style="font-weight: 700; text-transform: uppercase;">CAREFLOW SETUP</div>', unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
