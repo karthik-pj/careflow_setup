@@ -4,7 +4,7 @@ import base64
 from pathlib import Path
 
 st.set_page_config(
-    page_title="Careflow BLE Indoor Positioning",
+    page_title="Careflow Setup",
     page_icon="📍",
     layout="wide",
     initial_sidebar_state="expanded"

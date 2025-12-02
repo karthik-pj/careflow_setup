@@ -1,4 +1,4 @@
-# Careflow BLE Indoor Positioning System
+# Careflow Setup
 
 ## Overview
 A Streamlit-based indoor positioning system for managing Careflow BLE Gateway devices, BLE beacons, and real-time location tracking with triangulation on floor plans.
