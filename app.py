@@ -142,8 +142,6 @@ try:
 except Exception:
     st.sidebar.info("Signal Processor: Not initialized")
 
-st.sidebar.markdown("---")
-st.sidebar.caption("Careflow Setup")
 
 if page == "Dashboard":
     from views import dashboard
