@@ -108,7 +108,7 @@ else:
         unsafe_allow_html=True
     )
 
-st.sidebar.markdown('<div class="careflow-subtitle">BLE Indoor Positioning</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="careflow-subtitle">Careflow Setup</div>', unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
@@ -143,7 +143,7 @@ except Exception:
     st.sidebar.info("Signal Processor: Not initialized")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Careflow BLE Gateway System")
+st.sidebar.caption("Careflow Setup")
 
 if page == "Dashboard":
     from views import dashboard
