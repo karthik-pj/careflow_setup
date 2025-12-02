@@ -8,6 +8,19 @@ import json
 import re
 
 
+def show_pending_message():
+    """Display any pending success message from session state"""
+    if 'buildings_success_msg' in st.session_state:
+        st.success(st.session_state['buildings_success_msg'])
+        del st.session_state['buildings_success_msg']
+
+
+def set_success_and_rerun(message):
+    """Store success message in session state and rerun"""
+    st.session_state['buildings_success_msg'] = message
+    st.rerun()
+
+
 def parse_gps_coordinates(coord_string):
     """
     Parse GPS coordinates in various formats:
@@ -136,6 +149,8 @@ def render():
     st.title("Buildings & Floor Plans")
     st.markdown("Manage buildings and upload architectural floor plans")
     
+    show_pending_message()
+    
     tab1, tab2 = st.tabs(["Buildings", "Floor Plans"])
     
     with tab1:
@@ -187,10 +202,9 @@ def render_buildings():
                     session.commit()
                     
                     if coord_pairs:
-                        st.success(f"Building '{name}' added with {len(coord_pairs)} boundary points!")
+                        set_success_and_rerun(f"Building '{name}' added with {len(coord_pairs)} boundary points!")
                     else:
-                        st.success(f"Building '{name}' added successfully!")
-                    st.rerun()
+                        set_success_and_rerun(f"Building '{name}' added successfully!")
                 else:
                     st.error("Building name is required")
         
@@ -226,10 +240,10 @@ def render_buildings():
                     
                     with col3:
                         if st.button("Delete", key=f"del_building_{building.id}", type="secondary"):
+                            building_name = building.name
                             session.delete(building)
                             session.commit()
-                            st.success(f"Building '{building.name}' deleted")
-                            st.rerun()
+                            set_success_and_rerun(f"Building '{building_name}' deleted")
                     
                     if building.boundary_coords:
                         with st.container():
@@ -249,58 +263,45 @@ def render_floor_plans():
         
         st.subheader("Upload Floor Plan")
         
+        building_options = {b.name: b.id for b in buildings}
+        
         plan_type = st.radio(
             "Floor Plan Type",
             ["Image (PNG/JPG)", "GeoJSON"],
             horizontal=True,
-            help="Choose between uploading an image or a GeoJSON architectural file"
+            help="Choose between uploading an image or a GeoJSON architectural file",
+            key="floor_plan_type_selector"
         )
         
-        with st.form("add_floor"):
-            building_options = {b.name: b.id for b in buildings}
-            selected_building = st.selectbox("Select Building*", options=list(building_options.keys()))
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement")
-                floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1")
-            
-            with col2:
-                if plan_type == "Image (PNG/JPG)":
-                    width_meters = st.number_input("Floor Width (meters)", value=50.0, min_value=1.0, max_value=1000.0)
-                    height_meters = st.number_input("Floor Height (meters)", value=50.0, min_value=1.0, max_value=1000.0)
-                else:
-                    st.info("Dimensions will be calculated from GeoJSON bounds")
-                    width_meters = None
-                    height_meters = None
-            
-            if plan_type == "Image (PNG/JPG)":
+        if plan_type == "Image (PNG/JPG)":
+            with st.form("add_floor_image"):
+                selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="img_building")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="img_floor_num")
+                    floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="img_floor_name")
+                
+                with col2:
+                    width_meters = st.number_input("Floor Width (meters)", value=50.0, min_value=1.0, max_value=1000.0, key="img_width")
+                    height_meters = st.number_input("Floor Height (meters)", value=50.0, min_value=1.0, max_value=1000.0, key="img_height")
+                
                 floor_plan_file = st.file_uploader(
                     "Upload Floor Plan Image*",
                     type=['png', 'jpg', 'jpeg'],
-                    help="Upload an architectural floor plan image"
+                    help="Upload an architectural floor plan image",
+                    key="img_uploader"
                 )
-                geojson_file = None
-            else:
-                floor_plan_file = None
-                geojson_file = st.file_uploader(
-                    "Upload GeoJSON Floor Plan*",
-                    type=['geojson', 'json'],
-                    help="Upload a GeoJSON file containing floor plan geometry (rooms, walls, etc.)"
-                )
-            
-            submitted = st.form_submit_button("Add Floor Plan", type="primary")
-            
-            if submitted:
-                if not selected_building:
-                    st.error("Please select a building")
-                elif plan_type == "Image (PNG/JPG)" and not floor_plan_file:
-                    st.error("Please upload a floor plan image")
-                elif plan_type == "GeoJSON" and not geojson_file:
-                    st.error("Please upload a GeoJSON file")
-                else:
-                    if plan_type == "Image (PNG/JPG)":
+                
+                submitted = st.form_submit_button("Add Floor Plan", type="primary")
+                
+                if submitted:
+                    if not selected_building:
+                        st.error("Please select a building")
+                    elif not floor_plan_file:
+                        st.error("Please upload a floor plan image")
+                    else:
                         image_data = floor_plan_file.read()
                         
                         floor = Floor(
@@ -315,8 +316,34 @@ def render_floor_plans():
                         )
                         session.add(floor)
                         session.commit()
-                        st.success("Floor plan image uploaded successfully!")
-                        st.rerun()
+                        set_success_and_rerun("Floor plan image uploaded successfully!")
+        else:
+            with st.form("add_floor_geojson"):
+                selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="geo_building")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="geo_floor_num")
+                    floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="geo_floor_name")
+                
+                with col2:
+                    st.info("Dimensions will be calculated from GeoJSON bounds")
+                
+                geojson_file = st.file_uploader(
+                    "Upload GeoJSON Floor Plan*",
+                    type=['geojson', 'json'],
+                    help="Upload a GeoJSON file containing floor plan geometry (rooms, walls, etc.)",
+                    key="geo_uploader"
+                )
+                
+                submitted = st.form_submit_button("Add Floor Plan", type="primary")
+                
+                if submitted:
+                    if not selected_building:
+                        st.error("Please select a building")
+                    elif not geojson_file:
+                        st.error("Please upload a GeoJSON file")
                     else:
                         geojson_content = geojson_file.read().decode('utf-8')
                         geojson_data, error = parse_geojson(geojson_content)
@@ -349,8 +376,7 @@ def render_floor_plans():
                                 
                                 rooms = extract_geojson_rooms(geojson_data)
                                 room_count = len(rooms)
-                                st.success(f"GeoJSON floor plan uploaded! Found {room_count} named rooms. Dimensions: {calc_width:.1f}m x {calc_height:.1f}m")
-                                st.rerun()
+                                set_success_and_rerun(f"GeoJSON floor plan uploaded! Found {room_count} named rooms. Dimensions: {calc_width:.1f}m x {calc_height:.1f}m")
                             else:
                                 st.error("Could not extract bounds from GeoJSON")
         
@@ -405,8 +431,7 @@ def render_floor_plans():
                             if st.button("Delete", key=f"del_floor_{floor.id}", type="secondary"):
                                 session.delete(floor)
                                 session.commit()
-                                st.success("Floor plan deleted")
-                                st.rerun()
+                                set_success_and_rerun("Floor plan deleted")
                 
                 st.markdown("---")
 
