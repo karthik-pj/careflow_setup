@@ -6,9 +6,24 @@ from utils.signal_processor import get_signal_processor
 import time
 
 
+def show_pending_message():
+    """Display any pending success message from session state"""
+    if 'mqtt_success_msg' in st.session_state:
+        st.success(st.session_state['mqtt_success_msg'])
+        del st.session_state['mqtt_success_msg']
+
+
+def set_success_and_rerun(message):
+    """Store success message in session state and rerun"""
+    st.session_state['mqtt_success_msg'] = message
+    st.rerun()
+
+
 def render():
     st.title("MQTT Broker Configuration")
     st.markdown("Configure the connection to your MQTT broker for receiving gateway data")
+    
+    show_pending_message()
     
     with get_db_session() as session:
         existing_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
@@ -104,16 +119,15 @@ def render():
                         )
                         session.add(config)
                     
-                    st.success("Configuration saved successfully!")
+                    session.commit()
                     
                     processor = get_signal_processor()
                     if processor.is_running:
                         processor.stop()
                         time.sleep(0.5)
                         processor.start()
-                        st.info("Signal processor restarted with new configuration")
                     
-                    st.rerun()
+                    set_success_and_rerun("Configuration saved successfully!")
             
             if test_connection:
                 if not broker_host:
@@ -231,10 +245,12 @@ def render():
                             for c in all_configs:
                                 c.is_active = False
                             config.is_active = True
-                            st.rerun()
+                            session.commit()
+                            set_success_and_rerun("Configuration activated")
                         
                         if st.button("Delete", key=f"delete_{config.id}", type="secondary"):
                             session.delete(config)
-                            st.rerun()
+                            session.commit()
+                            set_success_and_rerun("Configuration deleted")
         else:
             st.info("No MQTT configurations saved yet.")
