@@ -6,8 +6,8 @@ maxUploadSize = 50
 enableXsrfProtection = false
 
 [theme]
-primaryColor = "#2e5cbf"
+primaryColor = "#2563eb"
 backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#e8f4fc"
-textColor = "#1a1a1a"
+secondaryBackgroundColor = "#f8fafc"
+textColor = "#1e293b"
 font = "sans serif"
