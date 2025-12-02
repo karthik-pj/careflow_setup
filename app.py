@@ -57,12 +57,14 @@ st.markdown("""
     .logo-container {
         padding: 15px 0;
         margin-bottom: 5px;
+        text-align: center;
     }
     
     .logo-container img {
         width: 100%;
         max-width: 200px;
         height: auto;
+        display: inline-block;
     }
 </style>
 """, unsafe_allow_html=True)
