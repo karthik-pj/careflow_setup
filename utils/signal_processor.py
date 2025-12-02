@@ -91,8 +91,6 @@ class SignalProcessor:
                 self._last_error = self._mqtt_handler.last_error or "Failed to connect to MQTT broker"
                 return False
             
-            self._mqtt_handler.start()
-            
             self._publisher = get_mqtt_publisher()
             with get_db_session() as session:
                 mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()

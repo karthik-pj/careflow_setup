@@ -224,6 +224,18 @@ class MQTTHandler:
         """Connect to the MQTT broker with timeout"""
         try:
             self.client.connect(self.broker_host, self.broker_port, keepalive=60)
+            self.client.loop_start()
+            
+            import time
+            start_time = time.time()
+            while not self.is_connected and (time.time() - start_time) < timeout:
+                time.sleep(0.1)
+            
+            if not self.is_connected:
+                self.client.loop_stop()
+                self.last_error = self.last_error or "Connection timeout - broker did not confirm connection"
+                return False
+            
             return True
         except ssl.SSLCertVerificationError as e:
             self.last_error = f"SSL certificate error: {e}. Try enabling 'Use TLS/SSL' in config."
