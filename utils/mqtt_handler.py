@@ -78,7 +78,9 @@ class MQTTHandler:
             self.last_error = None
             if self.topic_prefix and self.topic_prefix.strip():
                 topic = self.topic_prefix.strip()
-                if not topic.endswith('/') and not topic.endswith('#'):
+                if '+' in topic or '#' in topic:
+                    pass
+                elif not topic.endswith('/') and not topic.endswith('#'):
                     topic = f"{topic}/#"
                 elif topic.endswith('/'):
                     topic = f"{topic}#"
@@ -130,9 +132,11 @@ class MQTTHandler:
         """
         Parse incoming MQTT message from Careflow gateway.
         
+        Topic format: /cfs1/{gateway_mac}/receive
+        
         Expected message format (JSON):
         {
-            "mac": "AA:BB:CC:DD:EE:FF",
+            "mac": "AA:BB:CC:DD:EE:FF",  # beacon MAC
             "gatewayMac": "11:22:33:44:55:66",
             "rssi": -65,
             "txPower": -59,
@@ -142,9 +146,9 @@ class MQTTHandler:
         Alternative format:
         {
             "type": "Gateway",
-            "mac": "11:22:33:44:55:66",
+            "mac": "11:22:33:44:55:66",  # gateway MAC
             "bleName": "...",
-            "bleMAC": "AA:BB:CC:DD:EE:FF",
+            "bleMAC": "AA:BB:CC:DD:EE:FF",  # beacon MAC
             "rssi": -65,
             "rawData": "..."
         }
@@ -153,17 +157,30 @@ class MQTTHandler:
             data = json.loads(payload.decode('utf-8'))
             raw_data = payload.decode('utf-8')
             
-            gateway_mac = data.get('gatewayMac') or data.get('mac', '')
-            beacon_mac = data.get('mac') or data.get('bleMAC', '')
+            topic_parts = topic.split('/')
+            gateway_mac_from_topic = ""
+            for i, part in enumerate(topic_parts):
+                if len(part) == 12 and all(c in '0123456789abcdefABCDEF' for c in part):
+                    gateway_mac_from_topic = ':'.join(part[j:j+2] for j in range(0, 12, 2))
+                    break
             
-            if 'gatewayMac' not in data and 'type' in data:
-                gateway_mac = data.get('mac', '')
-                beacon_mac = data.get('bleMAC', '')
+            gateway_mac = data.get('gatewayMac') or data.get('gateway_mac', '')
+            beacon_mac = data.get('mac') or data.get('bleMAC') or data.get('beacon_mac', '')
             
-            rssi = int(data.get('rssi', -100))
-            tx_power = int(data.get('txPower', data.get('txpower', -59)))
+            if 'gatewayMac' not in data and 'gateway_mac' not in data:
+                if 'type' in data and data.get('type') == 'Gateway':
+                    gateway_mac = data.get('mac', '')
+                    beacon_mac = data.get('bleMAC', '')
+                elif gateway_mac_from_topic:
+                    gateway_mac = gateway_mac_from_topic
             
-            timestamp_val = data.get('timestamp')
+            if not gateway_mac and gateway_mac_from_topic:
+                gateway_mac = gateway_mac_from_topic
+            
+            rssi = int(data.get('rssi', data.get('RSSI', -100)))
+            tx_power = int(data.get('txPower', data.get('txpower', data.get('tx_power', -59))))
+            
+            timestamp_val = data.get('timestamp') or data.get('time')
             if timestamp_val:
                 if isinstance(timestamp_val, (int, float)):
                     if timestamp_val > 1e12:
@@ -175,21 +192,20 @@ class MQTTHandler:
             else:
                 timestamp = datetime.utcnow()
             
-            if not gateway_mac or not beacon_mac:
-                parts = topic.replace(self.topic_prefix, '').split('/')
-                if parts and not gateway_mac:
-                    gateway_mac = parts[0]
+            if not beacon_mac:
+                print(f"[MQTT DEBUG] No beacon MAC found in message: {raw_data[:200]}")
+                return None
             
             return MQTTMessage(
-                gateway_mac=gateway_mac.upper(),
+                gateway_mac=gateway_mac.upper() if gateway_mac else "",
                 beacon_mac=beacon_mac.upper(),
                 rssi=rssi,
                 tx_power=tx_power,
                 timestamp=timestamp,
                 raw_data=raw_data
             )
-        except json.JSONDecodeError:
-            hex_data = payload.hex()
+        except json.JSONDecodeError as e:
+            print(f"[MQTT DEBUG] JSON decode error: {e}, payload: {payload[:200]}")
             return None
         except Exception as e:
             print(f"Parse error: {e}")
