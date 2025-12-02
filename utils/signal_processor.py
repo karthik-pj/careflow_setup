@@ -72,13 +72,16 @@ class SignalProcessor:
                 
                 password = self._get_mqtt_password(mqtt_config.password_env_key)
                 
+                ca_cert_path = getattr(mqtt_config, 'ca_cert_path', None)
+                
                 self._mqtt_handler = MQTTHandler(
                     broker_host=mqtt_config.broker_host,
                     broker_port=mqtt_config.broker_port,
                     username=mqtt_config.username,
                     password=password,
                     topic_prefix=mqtt_config.topic_prefix,
-                    use_tls=mqtt_config.use_tls
+                    use_tls=mqtt_config.use_tls,
+                    ca_cert_path=ca_cert_path
                 )
             
             if not self._mqtt_handler.connect():

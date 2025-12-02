@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import time
 import ssl
@@ -30,7 +31,8 @@ class MQTTHandler:
         username: Optional[str] = None,
         password: Optional[str] = None,
         topic_prefix: str = "ble/gateway/",
-        use_tls: bool = False
+        use_tls: bool = False,
+        ca_cert_path: Optional[str] = None
     ):
         self.broker_host = broker_host
         self.broker_port = broker_port
@@ -38,6 +40,7 @@ class MQTTHandler:
         self.password = password
         self.topic_prefix = topic_prefix
         self.use_tls = use_tls
+        self.ca_cert_path = ca_cert_path
         
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.client.on_connect = self._on_connect
@@ -48,10 +51,17 @@ class MQTTHandler:
             self.client.username_pw_set(username, password)
         
         if use_tls:
-            self.client.tls_set(
-                cert_reqs=ssl.CERT_REQUIRED,
-                tls_version=ssl.PROTOCOL_TLS
-            )
+            if ca_cert_path and os.path.exists(ca_cert_path):
+                self.client.tls_set(
+                    ca_certs=ca_cert_path,
+                    cert_reqs=ssl.CERT_REQUIRED,
+                    tls_version=ssl.PROTOCOL_TLSv1_2
+                )
+            else:
+                self.client.tls_set(
+                    cert_reqs=ssl.CERT_REQUIRED,
+                    tls_version=ssl.PROTOCOL_TLS
+                )
             self.client.tls_insecure_set(False)
         
         self.is_connected = False
@@ -250,5 +260,6 @@ def create_mqtt_handler_from_config(config: dict) -> MQTTHandler:
         username=config.get('username'),
         password=config.get('password'),
         topic_prefix=config.get('topic_prefix', 'ble/gateway/'),
-        use_tls=config.get('use_tls', False)
+        use_tls=config.get('use_tls', False),
+        ca_cert_path=config.get('ca_cert_path')
     )

@@ -159,6 +159,7 @@ class MQTTConfig(Base):
     password_env_key = Column(String(255))
     topic_prefix = Column(String(255), default='ble/gateway/')
     use_tls = Column(Boolean, default=False)
+    ca_cert_path = Column(String(500))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -83,8 +83,20 @@ def render():
                 use_tls = st.checkbox(
                     "Use TLS/SSL",
                     value=existing_config.use_tls if existing_config else False,
-                    help="Enable secure connection"
+                    help="Enable secure connection (required for EMQ X Cloud on port 8883)"
                 )
+                
+                ca_cert_path = st.text_input(
+                    "CA Certificate Path",
+                    value=existing_config.ca_cert_path if existing_config and existing_config.ca_cert_path else "certs/emqxsl-ca.crt",
+                    placeholder="certs/emqxsl-ca.crt",
+                    help="Path to CA certificate file for TLS (required for EMQ X Cloud)"
+                )
+                
+                if ca_cert_path and os.path.exists(ca_cert_path):
+                    st.success(f"CA certificate found: {ca_cert_path}")
+                elif use_tls and ca_cert_path:
+                    st.warning(f"CA certificate not found at: {ca_cert_path}")
             
             st.info("Set the MQTT password as a secret (via Secrets tab in Tools) using the environment variable name specified above. This keeps your password secure.")
             
@@ -107,6 +119,7 @@ def render():
                         existing_config.username = username or None
                         existing_config.password_env_key = password_env_key or None
                         existing_config.use_tls = use_tls
+                        existing_config.ca_cert_path = ca_cert_path or None
                     else:
                         config = MQTTConfig(
                             broker_host=broker_host,
@@ -115,6 +128,7 @@ def render():
                             username=username or None,
                             password_env_key=password_env_key or None,
                             use_tls=use_tls,
+                            ca_cert_path=ca_cert_path or None,
                             is_active=True
                         )
                         session.add(config)
@@ -143,7 +157,8 @@ def render():
                                 username=username or None,
                                 password=password,
                                 topic_prefix=topic_prefix,
-                                use_tls=use_tls
+                                use_tls=use_tls,
+                                ca_cert_path=ca_cert_path if use_tls else None
                             )
                             
                             if handler.connect():
