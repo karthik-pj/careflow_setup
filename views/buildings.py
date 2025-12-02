@@ -332,8 +332,8 @@ def render_floor_plans():
                 
                 geojson_file = st.file_uploader(
                     "Upload GeoJSON Floor Plan*",
-                    type=['geojson', 'json'],
-                    help="Upload a GeoJSON file containing floor plan geometry (rooms, walls, etc.)",
+                    type=['json'],
+                    help="Upload a GeoJSON file (.json) containing floor plan geometry (rooms, walls, etc.)",
                     key="geo_uploader"
                 )
                 
