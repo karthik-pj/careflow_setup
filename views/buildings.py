@@ -318,67 +318,86 @@ def render_floor_plans():
                         session.commit()
                         set_success_and_rerun("Floor plan image uploaded successfully!")
         else:
-            with st.form("add_floor_geojson"):
-                selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="geo_building")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="geo_floor_num")
-                    floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="geo_floor_name")
-                
-                with col2:
-                    st.info("Dimensions will be calculated from GeoJSON bounds")
-                
+            selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="geo_building")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="geo_floor_num")
+                floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="geo_floor_name")
+            
+            with col2:
+                st.info("Dimensions will be calculated from GeoJSON bounds")
+            
+            input_method = st.radio(
+                "Input Method",
+                ["Paste GeoJSON", "Upload File"],
+                horizontal=True,
+                help="Choose how to provide your GeoJSON floor plan"
+            )
+            
+            geojson_content = None
+            filename = "floor_plan.geojson"
+            
+            if input_method == "Paste GeoJSON":
+                geojson_text = st.text_area(
+                    "Paste GeoJSON Content*",
+                    height=300,
+                    placeholder='{"type": "FeatureCollection", "features": [...]}',
+                    help="Paste the complete GeoJSON content here"
+                )
+                if geojson_text:
+                    geojson_content = geojson_text.strip()
+            else:
                 geojson_file = st.file_uploader(
                     "Upload GeoJSON Floor Plan*",
-                    type=['json'],
-                    help="Upload a GeoJSON file (.json) containing floor plan geometry (rooms, walls, etc.)",
+                    type=None,
+                    help="Upload a GeoJSON file (.geojson or .json)",
                     key="geo_uploader"
                 )
-                
-                submitted = st.form_submit_button("Add Floor Plan", type="primary")
-                
-                if submitted:
-                    if not selected_building:
-                        st.error("Please select a building")
-                    elif not geojson_file:
-                        st.error("Please upload a GeoJSON file")
+                if geojson_file:
+                    geojson_content = geojson_file.read().decode('utf-8')
+                    filename = geojson_file.name
+            
+            if st.button("Add Floor Plan", type="primary", key="add_geojson_btn"):
+                if not selected_building:
+                    st.error("Please select a building")
+                elif not geojson_content:
+                    st.error("Please provide GeoJSON content (paste or upload)")
+                else:
+                    geojson_data, error = parse_geojson(geojson_content)
+                    
+                    if error:
+                        st.error(f"GeoJSON Error: {error}")
                     else:
-                        geojson_content = geojson_file.read().decode('utf-8')
-                        geojson_data, error = parse_geojson(geojson_content)
+                        bounds = extract_geojson_bounds(geojson_data)
                         
-                        if error:
-                            st.error(f"GeoJSON Error: {error}")
-                        else:
-                            bounds = extract_geojson_bounds(geojson_data)
+                        if bounds:
+                            lat_range = bounds['max_lat'] - bounds['min_lat']
+                            lon_range = bounds['max_lon'] - bounds['min_lon']
+                            calc_height = lat_range * 111000
+                            calc_width = lon_range * 111000 * abs(cos_deg(bounds['center_lat']))
                             
-                            if bounds:
-                                lat_range = bounds['max_lat'] - bounds['min_lat']
-                                lon_range = bounds['max_lon'] - bounds['min_lon']
-                                calc_height = lat_range * 111000
-                                calc_width = lon_range * 111000 * abs(cos_deg(bounds['center_lat']))
-                                
-                                floor = Floor(
-                                    building_id=building_options[selected_building],
-                                    floor_number=floor_number,
-                                    name=floor_name or f"Floor {floor_number}",
-                                    floor_plan_geojson=geojson_content,
-                                    floor_plan_filename=geojson_file.name,
-                                    floor_plan_type='geojson',
-                                    width_meters=round(calc_width, 2),
-                                    height_meters=round(calc_height, 2),
-                                    origin_lat=bounds['min_lat'],
-                                    origin_lon=bounds['min_lon']
-                                )
-                                session.add(floor)
-                                session.commit()
-                                
-                                rooms = extract_geojson_rooms(geojson_data)
-                                room_count = len(rooms)
-                                set_success_and_rerun(f"GeoJSON floor plan uploaded! Found {room_count} named rooms. Dimensions: {calc_width:.1f}m x {calc_height:.1f}m")
-                            else:
-                                st.error("Could not extract bounds from GeoJSON")
+                            floor = Floor(
+                                building_id=building_options[selected_building],
+                                floor_number=floor_number,
+                                name=floor_name or f"Floor {floor_number}",
+                                floor_plan_geojson=geojson_content,
+                                floor_plan_filename=filename,
+                                floor_plan_type='geojson',
+                                width_meters=round(calc_width, 2),
+                                height_meters=round(calc_height, 2),
+                                origin_lat=bounds['min_lat'],
+                                origin_lon=bounds['min_lon']
+                            )
+                            session.add(floor)
+                            session.commit()
+                            
+                            rooms = extract_geojson_rooms(geojson_data)
+                            room_count = len(rooms)
+                            set_success_and_rerun(f"GeoJSON floor plan uploaded! Found {room_count} named rooms. Dimensions: {calc_width:.1f}m x {calc_height:.1f}m")
+                        else:
+                            st.error("Could not extract bounds from GeoJSON")
         
         st.markdown("---")
         st.subheader("Existing Floor Plans")
