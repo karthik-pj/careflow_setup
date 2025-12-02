@@ -104,8 +104,12 @@ class MQTTHandler:
     def _on_message(self, client, userdata, msg):
         """Callback when message received"""
         try:
+            print(f"[MQTT DEBUG] Topic: {msg.topic}")
+            print(f"[MQTT DEBUG] Payload: {msg.payload[:500]}")
+            
             parsed_message = self._parse_message(msg.topic, msg.payload)
             if parsed_message:
+                print(f"[MQTT DEBUG] Parsed: gateway={parsed_message.gateway_mac}, beacon={parsed_message.beacon_mac}, rssi={parsed_message.rssi}")
                 try:
                     self.message_queue.put_nowait(parsed_message)
                 except queue.Full:
@@ -117,6 +121,8 @@ class MQTTHandler:
                         callback(parsed_message)
                     except Exception as e:
                         print(f"Callback error: {e}")
+            else:
+                print(f"[MQTT DEBUG] Failed to parse message - returned None")
         except Exception as e:
             print(f"Message parsing error: {e}")
     
