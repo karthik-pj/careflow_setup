@@ -151,6 +151,9 @@ def render():
                         try:
                             password = os.environ.get(password_env_key) if password_env_key else None
                             
+                            st.info(f"Debug: Using env key '{password_env_key}', password exists: {password is not None}, length: {len(password) if password else 0}")
+                            st.info(f"Debug: Host={broker_host}, Port={broker_port}, User={username}, TLS={use_tls}, CA={ca_cert_path}")
+                            
                             handler = MQTTHandler(
                                 broker_host=broker_host,
                                 broker_port=broker_port,
