@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+import ssl
 from datetime import datetime
 from typing import Callable, Optional, Dict, Any
 import paho.mqtt.client as mqtt
@@ -47,7 +48,11 @@ class MQTTHandler:
             self.client.username_pw_set(username, password)
         
         if use_tls:
-            self.client.tls_set()
+            self.client.tls_set(
+                cert_reqs=ssl.CERT_REQUIRED,
+                tls_version=ssl.PROTOCOL_TLS
+            )
+            self.client.tls_insecure_set(False)
         
         self.is_connected = False
         self.message_queue = queue.Queue(maxsize=10000)
@@ -173,11 +178,26 @@ class MQTTHandler:
         if callback in self.callbacks:
             self.callbacks.remove(callback)
     
-    def connect(self) -> bool:
-        """Connect to the MQTT broker"""
+    def connect(self, timeout: int = 10) -> bool:
+        """Connect to the MQTT broker with timeout"""
         try:
-            self.client.connect(self.broker_host, self.broker_port, 60)
+            self.client.connect(self.broker_host, self.broker_port, keepalive=60)
             return True
+        except ssl.SSLCertVerificationError as e:
+            self.last_error = f"SSL certificate error: {e}. Try enabling 'Use TLS/SSL' in config."
+            print(f"SSL error: {e}")
+            return False
+        except ConnectionRefusedError as e:
+            self.last_error = f"Connection refused. Check host/port and firewall settings."
+            print(f"Connection refused: {e}")
+            return False
+        except OSError as e:
+            if "timed out" in str(e).lower():
+                self.last_error = f"Connection timed out. Ensure broker is reachable and port {self.broker_port} is correct."
+            else:
+                self.last_error = f"Network error: {e}"
+            print(f"Connection error: {e}")
+            return False
         except Exception as e:
             self.last_error = str(e)
             print(f"Connection error: {e}")
