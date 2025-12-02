@@ -178,6 +178,64 @@ def render():
                             st.error(f"Connection error: {str(e)}")
         
         st.markdown("---")
+        st.subheader("Publish Settings (to Careflow App)")
+        st.markdown("Enable publishing of position and alert data to another application via MQTT")
+        
+        with st.form("mqtt_publish_config"):
+            publish_enabled = st.checkbox(
+                "Enable Publishing",
+                value=getattr(existing_config, 'publish_enabled', False) if existing_config else False,
+                help="Enable publishing of position and alert data to MQTT"
+            )
+            
+            col_pub1, col_pub2 = st.columns(2)
+            
+            with col_pub1:
+                positions_topic = st.text_input(
+                    "Positions Topic",
+                    value=getattr(existing_config, 'publish_positions_topic', 'careflow/positions') if existing_config else 'careflow/positions',
+                    placeholder="careflow/positions",
+                    help="Topic for publishing beacon positions (beacon MAC will be appended)"
+                )
+            
+            with col_pub2:
+                alerts_topic = st.text_input(
+                    "Alerts Topic",
+                    value=getattr(existing_config, 'publish_alerts_topic', 'careflow/alerts') if existing_config else 'careflow/alerts',
+                    placeholder="careflow/alerts",
+                    help="Topic for publishing zone alerts (alert type and zone ID will be appended)"
+                )
+            
+            publish_submitted = st.form_submit_button("Save Publish Settings", type="primary")
+            
+            if publish_submitted:
+                if existing_config:
+                    existing_config.publish_enabled = publish_enabled
+                    existing_config.publish_positions_topic = positions_topic
+                    existing_config.publish_alerts_topic = alerts_topic
+                    session.commit()
+                    
+                    if publish_enabled:
+                        from utils.mqtt_publisher import get_mqtt_publisher
+                        publisher = get_mqtt_publisher()
+                        if publisher.configure(existing_config):
+                            set_success_and_rerun("Publish settings saved and publisher connected!")
+                        else:
+                            set_success_and_rerun("Publish settings saved (publisher will connect when processor starts)")
+                    else:
+                        set_success_and_rerun("Publishing disabled")
+                else:
+                    st.warning("Please save broker configuration first")
+        
+        if existing_config and getattr(existing_config, 'publish_enabled', False):
+            from utils.mqtt_publisher import get_mqtt_publisher
+            publisher = get_mqtt_publisher()
+            if publisher.is_connected():
+                st.success("Publisher Status: Connected")
+            else:
+                st.warning("Publisher Status: Not connected (will connect when processor starts)")
+        
+        st.markdown("---")
         st.subheader("Signal Processor Control")
         
         processor = get_signal_processor()
@@ -207,6 +265,8 @@ def render():
                 st.write(f"**Signals received:** {stats['signals_received']}")
                 st.write(f"**Signals stored:** {stats['signals_stored']}")
                 st.write(f"**Positions calculated:** {stats['positions_calculated']}")
+                if 'positions_published' in stats:
+                    st.write(f"**Positions published:** {stats['positions_published']}")
         
         st.markdown("---")
         st.subheader("Expected Message Format")

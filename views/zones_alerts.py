@@ -5,6 +5,7 @@ from io import BytesIO
 from PIL import Image
 import plotly.graph_objects as go
 import base64
+from utils.mqtt_publisher import get_mqtt_publisher
 
 
 def point_in_zone(x, y, zone):
@@ -164,6 +165,22 @@ def check_zone_transitions(session, floor_id):
                         'beacon': beacon.name,
                         'time': datetime.utcnow()
                     })
+                    
+                    publisher = get_mqtt_publisher()
+                    if publisher.is_connected():
+                        floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
+                        floor_name = floor.name if floor else ""
+                        publisher.publish_alert(
+                            alert_type='enter',
+                            beacon_mac=beacon.mac_address,
+                            beacon_name=beacon.name,
+                            zone_id=zone.id,
+                            zone_name=zone.name,
+                            floor_name=floor_name,
+                            x=current_pos.x_position,
+                            y=current_pos.y_position,
+                            resource_type=beacon.resource_type
+                        )
             
             elif was_in_zone and not is_in_zone and zone.alert_on_exit:
                 existing = session.query(ZoneAlert).filter(
@@ -189,6 +206,22 @@ def check_zone_transitions(session, floor_id):
                         'beacon': beacon.name,
                         'time': datetime.utcnow()
                     })
+                    
+                    publisher = get_mqtt_publisher()
+                    if publisher.is_connected():
+                        floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
+                        floor_name = floor.name if floor else ""
+                        publisher.publish_alert(
+                            alert_type='exit',
+                            beacon_mac=beacon.mac_address,
+                            beacon_name=beacon.name,
+                            zone_id=zone.id,
+                            zone_name=zone.name,
+                            floor_name=floor_name,
+                            x=current_pos.x_position,
+                            y=current_pos.y_position,
+                            resource_type=beacon.resource_type
+                        )
     
     return alerts
 

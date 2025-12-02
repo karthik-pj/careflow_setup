@@ -5,9 +5,10 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import streamlit as st
 
-from database import get_db_session, Gateway, Beacon, RSSISignal, Position, MQTTConfig
+from database import get_db_session, Gateway, Beacon, RSSISignal, Position, MQTTConfig, Floor, Building
 from utils.mqtt_handler import MQTTHandler, MQTTMessage
 from utils.triangulation import GatewayReading, trilaterate_2d, calculate_velocity, filter_outlier_readings
+from utils.mqtt_publisher import get_mqtt_publisher
 
 
 class SignalProcessor:
@@ -36,8 +37,10 @@ class SignalProcessor:
             'signals_received': 0,
             'signals_stored': 0,
             'positions_calculated': 0,
+            'positions_published': 0,
             'errors': 0
         }
+        self._publisher = None
     
     @property
     def is_running(self) -> bool:
@@ -89,6 +92,13 @@ class SignalProcessor:
                 return False
             
             self._mqtt_handler.start()
+            
+            self._publisher = get_mqtt_publisher()
+            with get_db_session() as session:
+                mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
+                if mqtt_config and getattr(mqtt_config, 'publish_enabled', False):
+                    self._publisher.configure(mqtt_config)
+            
             self._running = True
             
             self._thread = threading.Thread(target=self._process_loop, daemon=True)
@@ -264,6 +274,32 @@ class SignalProcessor:
                         )
                         session.add(position)
                         self._stats['positions_calculated'] += 1
+                        
+                        if self._publisher and self._publisher.is_connected():
+                            floor = session.query(Floor).filter(Floor.id == floor_id).first()
+                            building_name = ""
+                            floor_name = ""
+                            if floor:
+                                floor_name = floor.name or f"Floor {floor.floor_number}"
+                                if floor.building:
+                                    building_name = floor.building.name
+                            
+                            if self._publisher.publish_position(
+                                beacon_mac=beacon.mac_address,
+                                beacon_name=beacon.name,
+                                resource_type=beacon.resource_type or "Device",
+                                floor_id=floor_id,
+                                floor_name=floor_name,
+                                building_name=building_name,
+                                x=x,
+                                y=y,
+                                accuracy=accuracy,
+                                speed=speed,
+                                heading=heading,
+                                velocity_x=velocity_x,
+                                velocity_y=velocity_y
+                            ):
+                                self._stats['positions_published'] += 1
                 
         except Exception as e:
             self._last_error = f"Position calculation error: {e}"
