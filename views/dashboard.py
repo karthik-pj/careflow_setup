@@ -57,17 +57,12 @@ def render():
         col_left, col_right = st.columns(2)
         
         with col_left:
-            st.markdown("""
-            <div class="cf-card">
-                <div class="cf-card-header">Signal Processing Status</div>
-            """, unsafe_allow_html=True)
-            
             processor = get_signal_processor()
             
             if processor.is_running:
-                st.markdown('<span class="cf-status cf-status-success">Running</span>', unsafe_allow_html=True)
                 stats = processor.stats
-                st.markdown(f"""
+                status_html = '<span class="cf-status cf-status-success">Running</span>'
+                stats_html = f"""
                 <div style="margin-top: 1rem; display: grid; gap: 0.5rem;">
                     <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #e2e8f0;">
                         <span style="color: #64748b;">Signals received</span>
@@ -82,23 +77,31 @@ def render():
                         <span style="font-weight: 600;">{stats['positions_calculated']}</span>
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
+                """
+                processor_card = f"""
+                <div class="cf-card">
+                    <div class="cf-card-header">Signal Processing Status</div>
+                    {status_html}
+                    {stats_html}
+                </div>
+                """
+                st.markdown(processor_card, unsafe_allow_html=True)
                 if stats['errors'] > 0:
                     st.warning(f"Errors: {stats['errors']}")
             else:
-                st.markdown('<span class="cf-status cf-status-warning">Stopped</span>', unsafe_allow_html=True)
+                status_html = '<span class="cf-status cf-status-warning">Stopped</span>'
+                processor_card = f"""
+                <div class="cf-card">
+                    <div class="cf-card-header">Signal Processing Status</div>
+                    {status_html}
+                    <p style="margin-top: 1rem; color: #64748b; font-size: 0.9rem;">Go to Signal Monitor to start processing</p>
+                </div>
+                """
+                st.markdown(processor_card, unsafe_allow_html=True)
                 if processor.last_error:
                     st.error(f"Last error: {processor.last_error}")
-                st.info("Go to Signal Monitor to start processing")
-            
-            st.markdown("</div>", unsafe_allow_html=True)
             
             st.markdown("<div style='height: 1rem'></div>", unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div class="cf-card">
-                <div class="cf-card-header">Recent Activity</div>
-            """, unsafe_allow_html=True)
             
             one_hour_ago = datetime.utcnow() - timedelta(hours=1)
             recent_signals = session.query(func.count(RSSISignal.id)).filter(
@@ -109,42 +112,48 @@ def render():
                 Position.timestamp >= one_hour_ago
             ).scalar()
             
-            st.markdown(f"""
-            <div style="display: grid; gap: 0.5rem;">
-                <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #e2e8f0;">
-                    <span style="color: #64748b;">Signals (last hour)</span>
-                    <span style="font-weight: 600;">{recent_signals}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 0.5rem 0;">
-                    <span style="color: #64748b;">Positions (last hour)</span>
-                    <span style="font-weight: 600;">{recent_positions}</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
             mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
+            
+            mqtt_html = ""
             if mqtt_config:
-                st.markdown(f"""
+                mqtt_html = f"""
                 <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(16, 185, 129, 0.1); border-radius: 8px; display: flex; align-items: center; gap: 0.5rem;">
                     <span style="color: #10b981;">●</span>
                     <span style="color: #10b981; font-size: 0.875rem;">MQTT: {mqtt_config.broker_host}:{mqtt_config.broker_port}</span>
                 </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.warning("No MQTT broker configured. Go to MQTT Configuration to set up.")
+                """
             
-            st.markdown("</div>", unsafe_allow_html=True)
+            activity_card = f"""
+            <div class="cf-card">
+                <div class="cf-card-header">Recent Activity</div>
+                <div style="display: grid; gap: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #e2e8f0;">
+                        <span style="color: #64748b;">Signals (last hour)</span>
+                        <span style="font-weight: 600;">{recent_signals}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.5rem 0;">
+                        <span style="color: #64748b;">Positions (last hour)</span>
+                        <span style="font-weight: 600;">{recent_positions}</span>
+                    </div>
+                </div>
+                {mqtt_html}
+            </div>
+            """
+            st.markdown(activity_card, unsafe_allow_html=True)
+            
+            if not mqtt_config:
+                st.warning("No MQTT broker configured. Go to MQTT Configuration to set up.")
         
         with col_right:
-            st.markdown("""
-            <div class="cf-card">
-                <div class="cf-card-header">Gateway Status</div>
-            """, unsafe_allow_html=True)
-            
             gateways = session.query(Gateway).filter(Gateway.is_active == True).limit(5).all()
             
+            gateway_card_html = """
+            <div class="cf-card">
+                <div class="cf-card-header">Gateway Status</div>
+            """
+            
             if gateways:
-                gateway_html = "<div style='display: grid; gap: 0.75rem;'>"
+                gateway_card_html += "<div style='display: grid; gap: 0.75rem;'>"
                 for gw in gateways:
                     five_min_ago = datetime.utcnow() - timedelta(minutes=5)
                     recent = session.query(func.count(RSSISignal.id)).filter(
@@ -155,7 +164,7 @@ def render():
                     status_color = "#10b981" if recent > 0 else "#ef4444"
                     status_bg = "rgba(16, 185, 129, 0.1)" if recent > 0 else "rgba(239, 68, 68, 0.1)"
                     
-                    gateway_html += f"""
+                    gateway_card_html += f"""
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: {status_bg}; border-radius: 8px;">
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
                             <span style="color: {status_color};">●</span>
@@ -164,19 +173,14 @@ def render():
                         <span style="font-size: 0.8rem; color: #64748b;">{recent} signals</span>
                     </div>
                     """
-                gateway_html += "</div>"
-                st.markdown(gateway_html, unsafe_allow_html=True)
+                gateway_card_html += "</div>"
             else:
-                st.info("No gateways configured yet.")
+                gateway_card_html += "<p style='color: #64748b; font-size: 0.9rem;'>No gateways configured yet.</p>"
             
-            st.markdown("</div>", unsafe_allow_html=True)
+            gateway_card_html += "</div>"
+            st.markdown(gateway_card_html, unsafe_allow_html=True)
         
         st.markdown("<div style='height: 1.5rem'></div>", unsafe_allow_html=True)
-        
-        st.markdown("""
-        <div class="cf-card">
-            <div class="cf-card-header">Quick Setup Guide</div>
-        """, unsafe_allow_html=True)
         
         steps_html = "<div style='display: grid; gap: 0.75rem;'>"
         
@@ -248,6 +252,11 @@ def render():
         """
         
         steps_html += "</div>"
-        st.markdown(steps_html, unsafe_allow_html=True)
         
-        st.markdown("</div>", unsafe_allow_html=True)
+        setup_card = f"""
+        <div class="cf-card">
+            <div class="cf-card-header">Quick Setup Guide</div>
+            {steps_html}
+        </div>
+        """
+        st.markdown(setup_card, unsafe_allow_html=True)
