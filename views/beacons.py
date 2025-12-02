@@ -4,6 +4,19 @@ from datetime import datetime
 import re
 
 
+def show_pending_message():
+    """Display any pending success message from session state"""
+    if 'beacons_success_msg' in st.session_state:
+        st.success(st.session_state['beacons_success_msg'])
+        del st.session_state['beacons_success_msg']
+
+
+def set_success_and_rerun(message):
+    """Store success message in session state and rerun"""
+    st.session_state['beacons_success_msg'] = message
+    st.rerun()
+
+
 def validate_mac_address(mac: str) -> bool:
     """Validate MAC address format"""
     pattern = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')
@@ -13,6 +26,8 @@ def validate_mac_address(mac: str) -> bool:
 def render():
     st.title("BLE Beacon Management")
     st.markdown("Register and manage BLE beacons for tracking")
+    
+    show_pending_message()
     
     with get_db_session() as session:
         st.subheader("Add New Beacon")
@@ -142,8 +157,8 @@ def render():
                             is_active=is_active
                         )
                         session.add(beacon)
-                        st.success(f"Beacon '{name}' added successfully!")
-                        st.rerun()
+                        session.commit()
+                        set_success_and_rerun(f"Beacon '{name}' added successfully!")
         
         st.markdown("---")
         st.subheader("Registered Beacons")
@@ -214,12 +229,14 @@ def render():
                     with col3:
                         if st.button("Toggle Active", key=f"toggle_beacon_{beacon.id}"):
                             beacon.is_active = not beacon.is_active
+                            session.commit()
                             st.rerun()
                         
                         if st.button("Delete", key=f"del_beacon_{beacon.id}", type="secondary"):
+                            beacon_name = beacon.name
                             session.delete(beacon)
-                            st.success(f"Beacon '{beacon.name}' deleted")
-                            st.rerun()
+                            session.commit()
+                            set_success_and_rerun(f"Beacon '{beacon_name}' deleted")
             
             st.markdown("---")
             st.write(f"**Total beacons:** {len(beacons)}")
