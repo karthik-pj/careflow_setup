@@ -55,7 +55,7 @@ st.markdown("""
     }
     
     .logo-container {
-        padding: 15px 0;
+        padding: 5px 0;
         margin-bottom: 5px;
         text-align: center;
     }
