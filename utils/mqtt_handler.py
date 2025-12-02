@@ -76,10 +76,17 @@ class MQTTHandler:
         if reason_code == 0:
             self.is_connected = True
             self.last_error = None
-            if self.topic_prefix:
-                topic = f"{self.topic_prefix}#"
-                client.subscribe(topic)
-                print(f"Connected to MQTT broker, subscribed to {topic}")
+            if self.topic_prefix and self.topic_prefix.strip():
+                topic = self.topic_prefix.strip()
+                if not topic.endswith('/') and not topic.endswith('#'):
+                    topic = f"{topic}/#"
+                elif topic.endswith('/'):
+                    topic = f"{topic}#"
+                try:
+                    client.subscribe(topic)
+                    print(f"Connected to MQTT broker, subscribed to {topic}")
+                except ValueError as e:
+                    print(f"Invalid subscription topic '{topic}': {e}")
             else:
                 print(f"Connected to MQTT broker (no subscription - publish only)")
         else:
