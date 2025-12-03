@@ -176,6 +176,9 @@ class SignalProcessor:
                     else:
                         return
                 
+                if not beacon.is_active:
+                    return
+                
                 signal = RSSISignal(
                     gateway_id=gateway.id,
                     beacon_id=beacon.id,
@@ -185,11 +188,16 @@ class SignalProcessor:
                     raw_data=msg.raw_data
                 )
                 session.add(signal)
+                session.commit()
                 self._stats['signals_stored'] += 1
                 
         except Exception as e:
-            self._last_error = f"Signal storage error: {e}"
-            self._stats['errors'] += 1
+            error_str = str(e)
+            if 'ForeignKeyViolation' in error_str or 'foreign key constraint' in error_str.lower():
+                pass
+            else:
+                self._last_error = f"Signal storage error: {e}"
+                self._stats['errors'] += 1
     
     def _calculate_positions(self):
         """Calculate positions for all beacons with recent signals"""
