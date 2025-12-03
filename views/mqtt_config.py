@@ -281,10 +281,10 @@ def render():
                 signal_window = st.slider(
                     "Signal Window (seconds)",
                     min_value=1.0,
-                    max_value=10.0,
-                    value=getattr(existing_config, 'signal_window_seconds', 3.0) if existing_config else 3.0,
-                    step=0.5,
-                    help="How far back to look for RSSI signals. Shorter = more responsive for moving beacons"
+                    max_value=30.0,
+                    value=getattr(existing_config, 'signal_window_seconds', 10.0) if existing_config else 10.0,
+                    step=1.0,
+                    help="How far back to look for RSSI signals. Longer = more stable, shorter = more responsive"
                 )
             
             with col_ps2:

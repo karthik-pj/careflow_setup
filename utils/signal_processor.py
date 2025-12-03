@@ -2,12 +2,12 @@ import threading
 import time
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 import streamlit as st
 
 from database import get_db_session, Gateway, Beacon, RSSISignal, Position, MQTTConfig, Floor, Building
 from utils.mqtt_handler import MQTTHandler, MQTTMessage
-from utils.triangulation import GatewayReading, trilaterate_2d, calculate_velocity, filter_outlier_readings
+from utils.triangulation import GatewayReading, trilaterate_2d, calculate_velocity, filter_outlier_readings, smooth_position
 from utils.mqtt_publisher import get_mqtt_publisher
 
 
@@ -41,6 +41,11 @@ class SignalProcessor:
             'errors': 0
         }
         self._publisher = None
+        self._refresh_interval = 1.0
+        self._signal_window_seconds = 3.0
+        self._rssi_smoothing_enabled = True
+        self._position_smoothing_alpha = 0.4
+        self._position_history: Dict[int, List[Tuple[float, float]]] = {}
     
     @property
     def is_running(self) -> bool:
@@ -94,8 +99,13 @@ class SignalProcessor:
             self._publisher = get_mqtt_publisher()
             with get_db_session() as session:
                 mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
-                if mqtt_config and getattr(mqtt_config, 'publish_enabled', False):
-                    self._publisher.configure(mqtt_config)
+                if mqtt_config:
+                    if getattr(mqtt_config, 'publish_enabled', False):
+                        self._publisher.configure(mqtt_config)
+                    self._refresh_interval = getattr(mqtt_config, 'refresh_interval', 1.0) or 1.0
+                    self._signal_window_seconds = getattr(mqtt_config, 'signal_window_seconds', 3.0) or 3.0
+                    self._rssi_smoothing_enabled = getattr(mqtt_config, 'rssi_smoothing_enabled', True)
+                    self._position_smoothing_alpha = getattr(mqtt_config, 'position_smoothing_alpha', 0.4) or 0.4
             
             self._running = True
             
@@ -135,16 +145,16 @@ class SignalProcessor:
                         self._stats['signals_received'] += 1
                         self._store_signal(msg)
                 
-                if (datetime.utcnow() - last_position_calc).total_seconds() >= 1:
+                if (datetime.utcnow() - last_position_calc).total_seconds() >= self._refresh_interval:
                     self._calculate_positions()
                     last_position_calc = datetime.utcnow()
                 
-                time.sleep(0.1)
+                time.sleep(0.05)
                 
             except Exception as e:
                 self._last_error = str(e)
                 self._stats['errors'] += 1
-                time.sleep(1)
+                time.sleep(0.5)
     
     def _store_signal(self, msg: MQTTMessage):
         """Store an RSSI signal in the database"""
@@ -203,12 +213,12 @@ class SignalProcessor:
         """Calculate positions for all beacons with recent signals"""
         try:
             with get_db_session() as session:
-                five_seconds_ago = datetime.utcnow() - timedelta(seconds=5)
+                window_start = datetime.utcnow() - timedelta(seconds=self._signal_window_seconds)
                 
-                beacon_signals: Dict[int, Dict[int, RSSISignal]] = {}
+                beacon_signals: Dict[int, Dict[int, List[RSSISignal]]] = {}
                 
                 recent_signals = session.query(RSSISignal).filter(
-                    RSSISignal.timestamp >= five_seconds_ago
+                    RSSISignal.timestamp >= window_start
                 ).order_by(RSSISignal.timestamp.desc()).all()
                 
                 for signal in recent_signals:
@@ -219,7 +229,9 @@ class SignalProcessor:
                         beacon_signals[beacon_id] = {}
                     
                     if gateway_id not in beacon_signals[beacon_id]:
-                        beacon_signals[beacon_id][gateway_id] = signal
+                        beacon_signals[beacon_id][gateway_id] = []
+                    
+                    beacon_signals[beacon_id][gateway_id].append(signal)
                 
                 for beacon_id, gateway_signals in beacon_signals.items():
                     beacon = session.query(Beacon).filter(
@@ -233,19 +245,34 @@ class SignalProcessor:
                     readings = []
                     floor_id = None
                     
-                    for gateway_id, signal in gateway_signals.items():
+                    for gateway_id, signals in gateway_signals.items():
                         gateway = session.query(Gateway).filter(
                             Gateway.id == gateway_id,
                             Gateway.is_active == True
                         ).first()
                         
-                        if gateway:
+                        if gateway and signals:
+                            if self._rssi_smoothing_enabled and len(signals) > 1:
+                                weights = []
+                                rssi_values = []
+                                for i, s in enumerate(signals):
+                                    weight = 1.0 / (i + 1)
+                                    weights.append(weight)
+                                    rssi_values.append(s.rssi)
+                                total_weight = sum(weights)
+                                avg_rssi = sum(r * w for r, w in zip(rssi_values, weights)) / total_weight
+                                rssi = int(round(avg_rssi))
+                                tx_power = signals[0].tx_power or -59
+                            else:
+                                rssi = signals[0].rssi
+                                tx_power = signals[0].tx_power or -59
+                            
                             readings.append(GatewayReading(
                                 gateway_id=gateway.id,
                                 x=gateway.x_position,
                                 y=gateway.y_position,
-                                rssi=signal.rssi,
-                                tx_power=signal.tx_power or -59,
+                                rssi=rssi,
+                                tx_power=tx_power,
                                 path_loss_exponent=gateway.path_loss_exponent or 2.0
                             ))
                             floor_id = gateway.floor_id
@@ -253,6 +280,17 @@ class SignalProcessor:
                     if len(readings) >= 1 and floor_id:
                         readings = filter_outlier_readings(readings)
                         x, y, accuracy = trilaterate_2d(readings)
+                        
+                        if self._position_smoothing_alpha < 1.0 and beacon_id in self._position_history:
+                            prev_positions = self._position_history[beacon_id]
+                            if prev_positions:
+                                x, y = smooth_position((x, y), prev_positions, self._position_smoothing_alpha)
+                        
+                        if beacon_id not in self._position_history:
+                            self._position_history[beacon_id] = []
+                        self._position_history[beacon_id].append((x, y))
+                        if len(self._position_history[beacon_id]) > 5:
+                            self._position_history[beacon_id] = self._position_history[beacon_id][-5:]
                         
                         previous_position = session.query(Position).filter(
                             Position.beacon_id == beacon_id

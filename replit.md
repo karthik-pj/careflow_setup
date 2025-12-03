@@ -139,6 +139,15 @@ Use comma-separated topics to subscribe to multiple gateways:
 /cfs1/+/send, /cfs2/+/send
 ```
 
+## Processing Settings
+The system supports configurable position calculation settings in MQTT Configuration:
+- **Refresh Rate**: 0.5s, 1s, or 2s intervals for position calculation
+- **Signal Window**: How far back to look for RSSI signals (default 10s, max 30s)
+  - Longer window = more stable but less responsive
+  - Shorter window = more responsive but may miss intermittent signals
+- **RSSI Smoothing**: Weighted average of multiple readings from same gateway
+- **Position Smoothing**: Exponential smoothing to reduce jitter (alpha 0.1-1.0)
+
 ## Technical Notes
 - Database sessions use context managers to prevent connection leaks
 - Signal processor runs in background thread for continuous data ingestion
@@ -150,6 +159,7 @@ Use comma-separated topics to subscribe to multiple gateways:
 - Zone alerts are deduplicated within 30-second windows
 - MQTT publisher uses async queue to avoid blocking DB transactions
 - MQTT handler supports both `beacons` and `data` arrays in gateway messages
+- Signal window should be at least 10 seconds for reliable position calculation with intermittent MQTT signals
 
 ## Security
 - MQTT passwords are NOT stored in database
