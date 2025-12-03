@@ -272,32 +272,40 @@ def render():
         st.subheader("Expected Message Format")
         
         st.markdown("""
-        The system expects MQTT messages from Careflow gateways in JSON format:
+        **Moko MKGW-mini03 Gateway Format** (CFS/Careflow):
         
         ```json
         {
-            "gatewayMac": "AA:BB:CC:DD:EE:FF",
-            "mac": "11:22:33:44:55:66",
-            "rssi": -65,
-            "txPower": -59,
-            "timestamp": 1699999999
+            "msg_id": "12345",
+            "device_info": {
+                "mac": "00E04C006BF1",
+                "timestamp": 1699999999
+            },
+            "beacons": [
+                {
+                    "type": "iBeacon",
+                    "mac": "AABBCCDDEEFF",
+                    "rssi": -65,
+                    "raw_data": "0201061AFF4C000215...",
+                    "tx_power": -59
+                }
+            ]
         }
         ```
         
-        **Alternative format:**
-        ```json
-        {
-            "type": "Gateway",
-            "mac": "AA:BB:CC:DD:EE:FF",
-            "bleMAC": "11:22:33:44:55:66",
-            "rssi": -65,
-            "rawData": "..."
-        }
+        **Topic Structure for Moko Gateways:**
+        - Gateway publishes to: `/cfs1/{gateway_mac}/send`
+        - Gateway subscribes to: `/cfs1/{gateway_mac}/receive`
+        
+        **Multiple Gateway Topics:**
+        Use comma-separated topics to subscribe to multiple gateways:
+        ```
+        /cfs1/+/send, /cfs2/+/send
         ```
         
-        **Topic Structure:**
-        - Default topic pattern: `{prefix}#` (subscribes to all subtopics)
-        - Example: `ble/gateway/entrance` or `ble/gateway/floor1/room1`
+        **Wildcard Patterns:**
+        - `+` matches one level (e.g., `/cfs1/+/send` matches any gateway MAC)
+        - `#` matches multiple levels (e.g., `#` matches all topics)
         """)
         
         st.markdown("---")

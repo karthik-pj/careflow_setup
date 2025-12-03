@@ -101,6 +101,44 @@ The system can publish beacon positions and zone alerts to MQTT for integration 
 - Non-blocking publish calls (queue with 1000 message capacity)
 - Automatic connection management with callbacks
 
+## MQTT Subscription (Moko MKGW-mini03 Gateways)
+The system is configured to receive data from Moko MKGW-mini03 gateways (CFS/Careflow branded):
+
+### Gateway Topic Structure
+- **Publish (gateway sends data)**: `/cfs1/{gateway_mac}/send` or `/cfs2/{gateway_mac}/send`
+- **Subscribe (gateway receives commands)**: `/cfs1/{gateway_mac}/receive` or `/cfs2/{gateway_mac}/receive`
+
+### Gateway Message Format
+```json
+{
+  "msg_id": 3070,
+  "device_info": {
+    "mac": "00e04c006bf1"
+  },
+  "data": [
+    {
+      "timestamp": 1764768812262,
+      "timezone": 0,
+      "type_code": 0,
+      "type": "ibeacon",
+      "rssi": -61,
+      "connectable": 0,
+      "mac": "b081845989f1",
+      "uuid": "00000000000000000000000000000000",
+      "major": 0,
+      "minor": 0,
+      "rssi_1m": 0
+    }
+  ]
+}
+```
+
+### Multiple Gateway Subscription
+Use comma-separated topics to subscribe to multiple gateways:
+```
+/cfs1/+/send, /cfs2/+/send
+```
+
 ## Technical Notes
 - Database sessions use context managers to prevent connection leaks
 - Signal processor runs in background thread for continuous data ingestion
@@ -111,6 +149,7 @@ The system can publish beacon positions and zone alerts to MQTT for integration 
 - MQTT passwords stored securely via environment variable references
 - Zone alerts are deduplicated within 30-second windows
 - MQTT publisher uses async queue to avoid blocking DB transactions
+- MQTT handler supports both `beacons` and `data` arrays in gateway messages
 
 ## Security
 - MQTT passwords are NOT stored in database

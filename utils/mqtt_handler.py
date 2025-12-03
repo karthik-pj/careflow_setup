@@ -78,17 +78,27 @@ class MQTTHandler:
             self.last_error = None
             if self.topic_prefix and self.topic_prefix.strip():
                 topic = self.topic_prefix.strip()
-                if '+' in topic or '#' in topic:
-                    pass
-                elif not topic.endswith('/') and not topic.endswith('#'):
-                    topic = f"{topic}/#"
-                elif topic.endswith('/'):
-                    topic = f"{topic}#"
-                try:
-                    client.subscribe(topic)
-                    print(f"Connected to MQTT broker, subscribed to {topic}")
-                except ValueError as e:
-                    print(f"Invalid subscription topic '{topic}': {e}")
+                
+                if ',' in topic:
+                    topics = [t.strip() for t in topic.split(',') if t.strip()]
+                    for t in topics:
+                        try:
+                            client.subscribe(t)
+                            print(f"Subscribed to topic: {t}")
+                        except ValueError as e:
+                            print(f"Invalid subscription topic '{t}': {e}")
+                else:
+                    if '+' in topic or '#' in topic:
+                        pass
+                    elif not topic.endswith('/') and not topic.endswith('#'):
+                        topic = f"{topic}/#"
+                    elif topic.endswith('/'):
+                        topic = f"{topic}#"
+                    try:
+                        client.subscribe(topic)
+                        print(f"Connected to MQTT broker, subscribed to {topic}")
+                    except ValueError as e:
+                        print(f"Invalid subscription topic '{topic}': {e}")
             else:
                 print(f"Connected to MQTT broker (no subscription - publish only)")
         else:
@@ -130,39 +140,118 @@ class MQTTHandler:
     
     def _parse_message(self, topic: str, payload: bytes) -> Optional[MQTTMessage]:
         """
-        Parse incoming MQTT message from Careflow gateway.
+        Parse incoming MQTT message from Moko MKGW-mini03 gateway (CFS/Careflow).
         
-        Topic format: /cfs1/{gateway_mac}/receive
+        Topic format: /cfs1/{gateway_mac}/send or /cfs2/{gateway_mac}/send
         
-        Expected message format (JSON):
+        Moko MKGW-mini03 format (JSON):
         {
-            "mac": "AA:BB:CC:DD:EE:FF",  # beacon MAC
-            "gatewayMac": "11:22:33:44:55:66",
+            "msg_id": "12345",
+            "device_info": {
+                "mac": "00E04C006BF1",  # gateway MAC (no colons)
+                "timestamp": 1699999999
+            },
+            "beacons": [
+                {
+                    "type": "iBeacon",
+                    "mac": "AABBCCDDEEFF",  # beacon MAC (no colons)
+                    "rssi": -65,
+                    "raw_data": "0201061AFF4C000215...",
+                    "uuid": "FDA50693-A4E2-4FB1-AFCF-C6EB07647825",
+                    "major": 100,
+                    "minor": 1,
+                    "tx_power": -59
+                }
+            ]
+        }
+        
+        Also supports simple format:
+        {
+            "gatewayMac": "AA:BB:CC:DD:EE:FF",
+            "mac": "11:22:33:44:55:66",
             "rssi": -65,
             "txPower": -59,
             "timestamp": 1699999999
         }
-        
-        Alternative format:
-        {
-            "type": "Gateway",
-            "mac": "11:22:33:44:55:66",  # gateway MAC
-            "bleName": "...",
-            "bleMAC": "AA:BB:CC:DD:EE:FF",  # beacon MAC
-            "rssi": -65,
-            "rawData": "..."
-        }
         """
         try:
-            data = json.loads(payload.decode('utf-8'))
             raw_data = payload.decode('utf-8')
+            data = json.loads(raw_data)
             
             topic_parts = topic.split('/')
             gateway_mac_from_topic = ""
             for i, part in enumerate(topic_parts):
                 if len(part) == 12 and all(c in '0123456789abcdefABCDEF' for c in part):
-                    gateway_mac_from_topic = ':'.join(part[j:j+2] for j in range(0, 12, 2))
+                    gateway_mac_from_topic = ':'.join(part[j:j+2].upper() for j in range(0, 12, 2))
                     break
+            
+            if 'device_info' in data and ('beacons' in data or 'data' in data):
+                device_info = data.get('device_info', {})
+                gateway_mac_raw = device_info.get('mac', '')
+                if len(gateway_mac_raw) == 12:
+                    gateway_mac = ':'.join(gateway_mac_raw[j:j+2].upper() for j in range(0, 12, 2))
+                else:
+                    gateway_mac = gateway_mac_raw.upper()
+                
+                if not gateway_mac and gateway_mac_from_topic:
+                    gateway_mac = gateway_mac_from_topic
+                
+                device_timestamp = device_info.get('timestamp')
+                if device_timestamp:
+                    if isinstance(device_timestamp, (int, float)):
+                        if device_timestamp > 1e12:
+                            base_timestamp = datetime.fromtimestamp(device_timestamp / 1000)
+                        else:
+                            base_timestamp = datetime.fromtimestamp(device_timestamp)
+                    else:
+                        base_timestamp = datetime.utcnow()
+                else:
+                    base_timestamp = datetime.utcnow()
+                
+                beacons = data.get('beacons', []) or data.get('data', [])
+                if not beacons:
+                    print(f"[MQTT DEBUG] No beacons in message from gateway {gateway_mac}")
+                    return None
+                
+                messages = []
+                for beacon in beacons:
+                    beacon_mac_raw = beacon.get('mac', '')
+                    if len(beacon_mac_raw) == 12:
+                        beacon_mac = ':'.join(beacon_mac_raw[j:j+2].upper() for j in range(0, 12, 2))
+                    else:
+                        beacon_mac = beacon_mac_raw.upper().replace('-', ':')
+                    
+                    if not beacon_mac:
+                        continue
+                    
+                    rssi = int(beacon.get('rssi', beacon.get('RSSI', -100)))
+                    tx_power = int(beacon.get('tx_power', beacon.get('txPower', beacon.get('measured_power', -59))))
+                    
+                    msg = MQTTMessage(
+                        gateway_mac=gateway_mac,
+                        beacon_mac=beacon_mac,
+                        rssi=rssi,
+                        tx_power=tx_power,
+                        timestamp=base_timestamp,
+                        raw_data=json.dumps(beacon)
+                    )
+                    messages.append(msg)
+                
+                if messages:
+                    for msg in messages[1:]:
+                        try:
+                            self.message_queue.put_nowait(msg)
+                        except queue.Full:
+                            self.message_queue.get()
+                            self.message_queue.put_nowait(msg)
+                        for callback in self.callbacks:
+                            try:
+                                callback(msg)
+                            except Exception as e:
+                                print(f"Callback error: {e}")
+                    
+                    return messages[0] if messages else None
+                return None
             
             gateway_mac = data.get('gatewayMac') or data.get('gateway_mac', '')
             beacon_mac = data.get('mac') or data.get('bleMAC') or data.get('beacon_mac', '')
@@ -209,6 +298,8 @@ class MQTTHandler:
             return None
         except Exception as e:
             print(f"Parse error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def add_callback(self, callback: Callable[[MQTTMessage], None]):
