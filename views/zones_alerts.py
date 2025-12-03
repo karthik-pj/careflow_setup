@@ -22,6 +22,53 @@ def latlon_to_meters(lat, lon, origin_lat, origin_lon):
     return dx, dy
 
 
+def get_geojson_bounds(floor):
+    """Calculate the actual coordinate bounds of the GeoJSON floor plan in meters"""
+    if not floor.floor_plan_geojson or not floor.origin_lat or not floor.origin_lon:
+        return None
+    
+    try:
+        geojson_data = json.loads(floor.floor_plan_geojson)
+        all_x = []
+        all_y = []
+        
+        origin_lat = float(floor.origin_lat)
+        origin_lon = float(floor.origin_lon)
+        
+        for feature in geojson_data.get('features', []):
+            geom = feature.get('geometry', {})
+            geom_type = geom.get('type', '')
+            
+            coords_list = []
+            if geom_type == 'Polygon':
+                coords_list = geom.get('coordinates', [[]])[0]
+            elif geom_type == 'LineString':
+                coords_list = geom.get('coordinates', [])
+            elif geom_type == 'MultiPolygon':
+                for poly in geom.get('coordinates', []):
+                    if poly:
+                        coords_list.extend(poly[0])
+            
+            for c in coords_list:
+                if len(c) >= 2:
+                    lon, lat = c[0], c[1]
+                    x, y = latlon_to_meters(lat, lon, origin_lat, origin_lon)
+                    all_x.append(x)
+                    all_y.append(y)
+        
+        if all_x and all_y:
+            return {
+                'x_min': min(all_x),
+                'x_max': max(all_x),
+                'y_min': min(all_y),
+                'y_max': max(all_y)
+            }
+    except Exception:
+        pass
+    
+    return None
+
+
 def render_geojson_floor_plan(fig, floor):
     """Render GeoJSON floor plan as Plotly traces in meter coordinates"""
     if not floor.floor_plan_geojson or not floor.origin_lat or not floor.origin_lon:
@@ -98,11 +145,14 @@ def render_geojson_floor_plan(fig, floor):
         return False
 
 
-def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editable=False, new_zone=None):
+def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editable=False, new_zone=None, bounds=None):
     """Create a plotly figure with floor plan, zones, and current positions"""
     
     fig = go.Figure()
     has_floor_plan = False
+    
+    if bounds is None:
+        bounds = get_geojson_bounds(floor)
     
     if floor.floor_plan_image:
         try:
@@ -202,26 +252,38 @@ def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editabl
                 name=beacon_name
             ))
     
-    w = float(floor.width_meters)
-    h = float(floor.height_meters)
+    if bounds:
+        x_min_range = bounds['x_min'] - 2
+        x_max_range = bounds['x_max'] + 2
+        y_min_range = bounds['y_min'] - 2
+        y_max_range = bounds['y_max'] + 2
+        w = bounds['x_max'] - bounds['x_min']
+        h = bounds['y_max'] - bounds['y_min']
+    else:
+        x_min_range = 0
+        x_max_range = float(floor.width_meters)
+        y_min_range = 0
+        y_max_range = float(floor.height_meters)
+        w = x_max_range
+        h = y_max_range
     
     fig.update_layout(
         xaxis=dict(
-            range=[0, w],
+            range=[x_min_range, x_max_range],
             title="X (meters)",
             showgrid=not has_floor_plan,
             zeroline=False,
             constrain='domain',
-            dtick=max(1, w // 10)
+            dtick=max(1, int(w // 8))
         ),
         yaxis=dict(
-            range=[0, h],
+            range=[y_min_range, y_max_range],
             title="Y (meters)",
             showgrid=not has_floor_plan,
             zeroline=False,
             scaleanchor="x",
             scaleratio=1,
-            dtick=max(1, h // 10)
+            dtick=max(1, int(h // 8))
         ),
         showlegend=True,
         legend=dict(x=1.02, y=1, bgcolor='rgba(255,255,255,0.8)'),
@@ -401,12 +463,26 @@ def render_zone_management():
             Gateway.floor_id == selected_floor_id,
             Gateway.is_active == True
         ).all()
-        gateways_data = [{'name': gw.name, 'x': gw.x_position, 'y': gw.y_position} for gw in gateways]
+        gateways_data = [{'name': gw.name, 'x': float(gw.x_position), 'y': float(gw.y_position)} for gw in gateways]
         
         col_form, col_preview = st.columns([1, 2])
         
-        w = float(floor.width_meters)
-        h = float(floor.height_meters)
+        geojson_bounds = get_geojson_bounds(floor)
+        
+        if geojson_bounds:
+            x_range_min = geojson_bounds['x_min']
+            x_range_max = geojson_bounds['x_max']
+            y_range_min = geojson_bounds['y_min']
+            y_range_max = geojson_bounds['y_max']
+            w = x_range_max - x_range_min
+            h = y_range_max - y_range_min
+        else:
+            x_range_min = 0.0
+            y_range_min = 0.0
+            x_range_max = float(floor.width_meters)
+            y_range_max = float(floor.height_meters)
+            w = x_range_max
+            h = y_range_max
         
         with col_form:
             st.markdown("#### Zone Settings")
@@ -416,7 +492,10 @@ def render_zone_management():
             color = st.color_picker("Zone Color", "#FF0000", key="zone_color")
             
             st.markdown("#### Zone Position")
-            st.caption(f"Floor dimensions: {w}m x {h}m")
+            if geojson_bounds:
+                st.caption(f"Floor area: X [{x_range_min:.1f} to {x_range_max:.1f}]m, Y [{y_range_min:.1f} to {y_range_max:.1f}]m")
+            else:
+                st.caption(f"Floor dimensions: {w:.1f}m x {h:.1f}m")
             
             preset = st.selectbox(
                 "Quick Presets",
@@ -425,44 +504,51 @@ def render_zone_management():
                 key="zone_preset"
             )
             
+            mid_x = (x_range_min + x_range_max) / 2
+            mid_y = (y_range_min + y_range_max) / 2
+            
             if preset == "Top-Left Quarter":
-                default_x_min, default_y_min = 0.0, h/2
-                default_x_max, default_y_max = w/2, h
+                default_x_min, default_y_min = x_range_min, mid_y
+                default_x_max, default_y_max = mid_x, y_range_max
             elif preset == "Top-Right Quarter":
-                default_x_min, default_y_min = w/2, h/2
-                default_x_max, default_y_max = w, h
+                default_x_min, default_y_min = mid_x, mid_y
+                default_x_max, default_y_max = x_range_max, y_range_max
             elif preset == "Bottom-Left Quarter":
-                default_x_min, default_y_min = 0.0, 0.0
-                default_x_max, default_y_max = w/2, h/2
+                default_x_min, default_y_min = x_range_min, y_range_min
+                default_x_max, default_y_max = mid_x, mid_y
             elif preset == "Bottom-Right Quarter":
-                default_x_min, default_y_min = w/2, 0.0
-                default_x_max, default_y_max = w, h/2
+                default_x_min, default_y_min = mid_x, y_range_min
+                default_x_max, default_y_max = x_range_max, mid_y
             elif preset == "Center":
-                default_x_min, default_y_min = w/4, h/4
-                default_x_max, default_y_max = 3*w/4, 3*h/4
+                default_x_min, default_y_min = x_range_min + w/4, y_range_min + h/4
+                default_x_max, default_y_max = x_range_max - w/4, y_range_max - h/4
             elif preset == "Left Half":
-                default_x_min, default_y_min = 0.0, 0.0
-                default_x_max, default_y_max = w/2, h
+                default_x_min, default_y_min = x_range_min, y_range_min
+                default_x_max, default_y_max = mid_x, y_range_max
             elif preset == "Right Half":
-                default_x_min, default_y_min = w/2, 0.0
-                default_x_max, default_y_max = w, h
+                default_x_min, default_y_min = mid_x, y_range_min
+                default_x_max, default_y_max = x_range_max, y_range_max
             elif preset == "Top Half":
-                default_x_min, default_y_min = 0.0, h/2
-                default_x_max, default_y_max = w, h
+                default_x_min, default_y_min = x_range_min, mid_y
+                default_x_max, default_y_max = x_range_max, y_range_max
             elif preset == "Bottom Half":
-                default_x_min, default_y_min = 0.0, 0.0
-                default_x_max, default_y_max = w, h/2
+                default_x_min, default_y_min = x_range_min, y_range_min
+                default_x_max, default_y_max = x_range_max, mid_y
             else:
-                default_x_min, default_y_min = 0.0, 0.0
-                default_x_max, default_y_max = min(10.0, w), min(10.0, h)
+                zone_w = min(10.0, w/3)
+                zone_h = min(10.0, h/3)
+                default_x_min = x_range_min + w/2 - zone_w/2
+                default_y_min = y_range_min + h/2 - zone_h/2
+                default_x_max = default_x_min + zone_w
+                default_y_max = default_y_min + zone_h
             
             col2a, col2b = st.columns(2)
             with col2a:
-                x_min = st.number_input("X Min (m)", value=default_x_min, min_value=0.0, max_value=float(w), step=0.5, key="x_min")
-                y_min = st.number_input("Y Min (m)", value=default_y_min, min_value=0.0, max_value=float(h), step=0.5, key="y_min")
+                x_min = st.number_input("X Min (m)", value=default_x_min, min_value=x_range_min - 10, max_value=x_range_max + 10, step=0.5, key="x_min")
+                y_min = st.number_input("Y Min (m)", value=default_y_min, min_value=y_range_min - 10, max_value=y_range_max + 10, step=0.5, key="y_min")
             with col2b:
-                x_max = st.number_input("X Max (m)", value=default_x_max, min_value=0.0, max_value=float(w), step=0.5, key="x_max")
-                y_max = st.number_input("Y Max (m)", value=default_y_max, min_value=0.0, max_value=float(h), step=0.5, key="y_max")
+                x_max = st.number_input("X Max (m)", value=default_x_max, min_value=x_range_min - 10, max_value=x_range_max + 10, step=0.5, key="x_max")
+                y_max = st.number_input("Y Max (m)", value=default_y_max, min_value=y_range_min - 10, max_value=y_range_max + 10, step=0.5, key="y_max")
             
             st.markdown("#### Alerts")
             col_alert1, col_alert2 = st.columns(2)
@@ -507,7 +593,7 @@ def render_zone_management():
                 'name': zone_name or "New Zone"
             }
             
-            fig = get_zones_figure(floor, existing_zones, gateways_data, new_zone=new_zone_preview)
+            fig = get_zones_figure(floor, existing_zones, gateways_data, new_zone=new_zone_preview, bounds=geojson_bounds)
             st.plotly_chart(fig, use_container_width=True, key="zone_preview_chart")
             
             if existing_zones:
