@@ -256,6 +256,74 @@ def render():
                 st.rerun()
         
         st.markdown("---")
+        st.subheader("Processing Settings")
+        st.markdown("Configure position calculation speed and precision")
+        
+        with st.form("processing_settings"):
+            col_ps1, col_ps2 = st.columns(2)
+            
+            with col_ps1:
+                refresh_options = {
+                    "0.5 seconds (Fast)": 0.5,
+                    "1.0 second (Default)": 1.0,
+                    "2.0 seconds (Battery Saver)": 2.0
+                }
+                current_refresh = getattr(existing_config, 'refresh_interval', 1.0) if existing_config else 1.0
+                current_option = next((k for k, v in refresh_options.items() if v == current_refresh), "1.0 second (Default)")
+                
+                refresh_rate = st.selectbox(
+                    "Position Refresh Rate",
+                    options=list(refresh_options.keys()),
+                    index=list(refresh_options.keys()).index(current_option),
+                    help="How often to calculate beacon positions. Faster = more responsive but more CPU usage"
+                )
+                
+                signal_window = st.slider(
+                    "Signal Window (seconds)",
+                    min_value=1.0,
+                    max_value=10.0,
+                    value=getattr(existing_config, 'signal_window_seconds', 3.0) if existing_config else 3.0,
+                    step=0.5,
+                    help="How far back to look for RSSI signals. Shorter = more responsive for moving beacons"
+                )
+            
+            with col_ps2:
+                rssi_smoothing = st.checkbox(
+                    "Enable RSSI Smoothing",
+                    value=getattr(existing_config, 'rssi_smoothing_enabled', True) if existing_config else True,
+                    help="Average multiple RSSI readings to reduce noise"
+                )
+                
+                position_alpha = st.slider(
+                    "Position Smoothing Factor",
+                    min_value=0.1,
+                    max_value=1.0,
+                    value=getattr(existing_config, 'position_smoothing_alpha', 0.4) if existing_config else 0.4,
+                    step=0.1,
+                    help="0.1 = very smooth (slow response), 1.0 = no smoothing (instant but jittery)"
+                )
+            
+            processing_submitted = st.form_submit_button("Save Processing Settings", type="primary")
+            
+            if processing_submitted:
+                if existing_config:
+                    existing_config.refresh_interval = refresh_options[refresh_rate]
+                    existing_config.signal_window_seconds = signal_window
+                    existing_config.rssi_smoothing_enabled = rssi_smoothing
+                    existing_config.position_smoothing_alpha = position_alpha
+                    session.commit()
+                    
+                    processor = get_signal_processor()
+                    if processor.is_running:
+                        processor.stop()
+                        time.sleep(0.3)
+                        processor.start()
+                    
+                    set_success_and_rerun("Processing settings saved! Signal processor restarted with new settings.")
+                else:
+                    st.warning("Please save broker configuration first")
+        
+        st.markdown("---")
         st.subheader("Signal Processor Control")
         
         processor = get_signal_processor()
