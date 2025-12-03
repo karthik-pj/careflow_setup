@@ -602,6 +602,98 @@ def render_zone_management():
         st.markdown("---")
         st.subheader("Existing Zones")
         
+        editing_zone_id = st.session_state.get('editing_zone_id', None)
+        
+        if editing_zone_id:
+            edit_zone = session.query(Zone).filter(Zone.id == editing_zone_id).first()
+            if edit_zone:
+                edit_floor = session.query(Floor).filter(Floor.id == edit_zone.floor_id).first()
+                if edit_floor:
+                    st.markdown(f"### Editing Zone: {edit_zone.name}")
+                    
+                    edit_bounds = get_geojson_bounds(edit_floor)
+                    if edit_bounds:
+                        ex_min, ex_max = edit_bounds['x_min'], edit_bounds['x_max']
+                        ey_min, ey_max = edit_bounds['y_min'], edit_bounds['y_max']
+                    else:
+                        ex_min, ey_min = 0.0, 0.0
+                        ex_max = float(edit_floor.width_meters)
+                        ey_max = float(edit_floor.height_meters)
+                    
+                    edit_col1, edit_col2 = st.columns([1, 2])
+                    
+                    with edit_col1:
+                        edit_name = st.text_input("Zone Name", value=edit_zone.name, key="edit_zone_name")
+                        edit_desc = st.text_area("Description", value=edit_zone.description or "", key="edit_zone_desc", height=68)
+                        edit_color = st.color_picker("Color", value=edit_zone.color, key="edit_zone_color")
+                        
+                        st.markdown("**Position**")
+                        ecol1, ecol2 = st.columns(2)
+                        with ecol1:
+                            edit_x_min = st.number_input("X Min", value=float(edit_zone.x_min), min_value=ex_min - 20, max_value=ex_max + 20, step=0.5, key="edit_x_min")
+                            edit_y_min = st.number_input("Y Min", value=float(edit_zone.y_min), min_value=ey_min - 20, max_value=ey_max + 20, step=0.5, key="edit_y_min")
+                        with ecol2:
+                            edit_x_max = st.number_input("X Max", value=float(edit_zone.x_max), min_value=ex_min - 20, max_value=ex_max + 20, step=0.5, key="edit_x_max")
+                            edit_y_max = st.number_input("Y Max", value=float(edit_zone.y_max), min_value=ey_min - 20, max_value=ey_max + 20, step=0.5, key="edit_y_max")
+                        
+                        st.markdown("**Alerts**")
+                        ecol3, ecol4 = st.columns(2)
+                        with ecol3:
+                            edit_alert_enter = st.checkbox("Alert on Enter", value=bool(edit_zone.alert_on_enter), key="edit_alert_enter")
+                        with ecol4:
+                            edit_alert_exit = st.checkbox("Alert on Exit", value=bool(edit_zone.alert_on_exit), key="edit_alert_exit")
+                        
+                        bcol1, bcol2, bcol3 = st.columns(3)
+                        with bcol1:
+                            if st.button("Save Changes", type="primary", key="save_edit"):
+                                if not edit_name:
+                                    st.error("Zone name is required")
+                                elif edit_x_max <= edit_x_min or edit_y_max <= edit_y_min:
+                                    st.error("Max values must be greater than min values")
+                                else:
+                                    edit_zone.name = edit_name
+                                    edit_zone.description = edit_desc
+                                    edit_zone.color = edit_color
+                                    edit_zone.x_min = edit_x_min
+                                    edit_zone.y_min = edit_y_min
+                                    edit_zone.x_max = edit_x_max
+                                    edit_zone.y_max = edit_y_max
+                                    edit_zone.alert_on_enter = edit_alert_enter
+                                    edit_zone.alert_on_exit = edit_alert_exit
+                                    st.session_state['editing_zone_id'] = None
+                                    st.success(f"Zone '{edit_name}' updated!")
+                                    st.rerun()
+                        with bcol2:
+                            if st.button("Cancel", key="cancel_edit"):
+                                st.session_state['editing_zone_id'] = None
+                                st.rerun()
+                        with bcol3:
+                            if st.button("Delete Zone", type="secondary", key="delete_in_edit"):
+                                session.delete(edit_zone)
+                                st.session_state['editing_zone_id'] = None
+                                st.success(f"Zone '{edit_zone.name}' deleted!")
+                                st.rerun()
+                    
+                    with edit_col2:
+                        st.markdown("**Preview**")
+                        edit_gws = session.query(Gateway).filter(Gateway.floor_id == edit_floor.id, Gateway.is_active == True).all()
+                        edit_gw_data = [{'name': gw.name, 'x': float(gw.x_position), 'y': float(gw.y_position)} for gw in edit_gws]
+                        
+                        edit_preview = {
+                            'x_min': edit_x_min,
+                            'y_min': edit_y_min,
+                            'x_max': edit_x_max,
+                            'y_max': edit_y_max,
+                            'color': edit_color,
+                            'name': edit_name or "Zone"
+                        }
+                        
+                        other_zones = session.query(Zone).filter(Zone.floor_id == edit_floor.id, Zone.id != edit_zone.id).all()
+                        edit_fig = get_zones_figure(edit_floor, other_zones, edit_gw_data, new_zone=edit_preview, bounds=edit_bounds)
+                        st.plotly_chart(edit_fig, use_container_width=True, key="edit_zone_preview")
+                    
+                    st.markdown("---")
+        
         zones = session.query(Zone).order_by(Zone.name).all()
         
         if zones:
@@ -618,13 +710,14 @@ def render_zone_management():
                 
                 for zone, floor_obj in floor_zones:
                     status_icon = "🟢" if zone.is_active else "🔴"
+                    is_editing = editing_zone_id == zone.id
                     
-                    with st.expander(f"{status_icon} {zone.name}", expanded=False):
+                    with st.expander(f"{status_icon} {zone.name}" + (" (editing)" if is_editing else ""), expanded=is_editing):
                         col1, col2, col3 = st.columns([2, 2, 1])
                         
                         with col1:
-                            st.write(f"**Area:** ({zone.x_min:.1f}, {zone.y_min:.1f}) to ({zone.x_max:.1f}, {zone.y_max:.1f})")
-                            st.write(f"**Size:** {zone.x_max - zone.x_min:.1f}m x {zone.y_max - zone.y_min:.1f}m")
+                            st.write(f"**Area:** ({float(zone.x_min):.1f}, {float(zone.y_min):.1f}) to ({float(zone.x_max):.1f}, {float(zone.y_max):.1f})")
+                            st.write(f"**Size:** {float(zone.x_max) - float(zone.x_min):.1f}m x {float(zone.y_max) - float(zone.y_min):.1f}m")
                             st.write(f"**Description:** {zone.description or 'None'}")
                         
                         with col2:
@@ -637,24 +730,17 @@ def render_zone_management():
                                 zone.is_active = not zone.is_active
                                 st.rerun()
                             
-                            if st.button("Edit", key=f"edit_zone_{zone.id}"):
-                                st.session_state['editing_zone_id'] = zone.id
-                                st.rerun()
+                            if not is_editing:
+                                if st.button("Edit", key=f"edit_zone_{zone.id}", type="primary"):
+                                    st.session_state['editing_zone_id'] = zone.id
+                                    st.rerun()
                             
                             if st.button("Delete", key=f"del_zone_{zone.id}", type="secondary"):
                                 session.delete(zone)
+                                if editing_zone_id == zone.id:
+                                    st.session_state['editing_zone_id'] = None
                                 st.success(f"Zone '{zone.name}' deleted")
                                 st.rerun()
-                        
-                        if floor_obj:
-                            st.markdown("**Zone Preview:**")
-                            gws = session.query(Gateway).filter(
-                                Gateway.floor_id == floor_obj.id,
-                                Gateway.is_active == True
-                            ).all()
-                            gw_data = [{'name': gw.name, 'x': gw.x_position, 'y': gw.y_position} for gw in gws]
-                            zone_fig = get_zones_figure(floor_obj, [zone], gw_data)
-                            st.plotly_chart(zone_fig, use_container_width=True, key=f"zone_preview_{zone.id}")
         else:
             st.info("No zones created yet.")
 
