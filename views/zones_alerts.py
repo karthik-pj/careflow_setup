@@ -13,7 +13,7 @@ def point_in_zone(x, y, zone):
     return zone.x_min <= x <= zone.x_max and zone.y_min <= y <= zone.y_max
 
 
-def get_zones_figure(floor, zones, gateways_data, beacon_positions=None):
+def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editable=False, new_zone=None):
     """Create a plotly figure with floor plan, zones, and current positions"""
     
     fig = go.Figure()
@@ -64,6 +64,30 @@ def get_zones_figure(floor, zones, gateways_data, beacon_positions=None):
             font=dict(size=12, color=zone.color)
         )
     
+    if new_zone:
+        fig.add_shape(
+            type="rect",
+            x0=new_zone['x_min'],
+            y0=new_zone['y_min'],
+            x1=new_zone['x_max'],
+            y1=new_zone['y_max'],
+            line=dict(color=new_zone.get('color', '#FF0000'), width=3, dash='dash'),
+            fillcolor=new_zone.get('color', '#FF0000'),
+            opacity=0.4,
+            name="New Zone (Preview)"
+        )
+        
+        fig.add_annotation(
+            x=(new_zone['x_min'] + new_zone['x_max']) / 2,
+            y=(new_zone['y_min'] + new_zone['y_max']) / 2,
+            text=new_zone.get('name', 'New Zone'),
+            showarrow=False,
+            font=dict(size=14, color='white'),
+            bgcolor=new_zone.get('color', '#FF0000'),
+            bordercolor=new_zone.get('color', '#FF0000'),
+            borderwidth=1
+        )
+    
     for gw in gateways_data:
         fig.add_trace(go.Scatter(
             x=[gw['x']],
@@ -92,13 +116,15 @@ def get_zones_figure(floor, zones, gateways_data, beacon_positions=None):
         xaxis=dict(
             range=[0, floor.width_meters],
             title="X (meters)",
-            constrain='domain'
+            constrain='domain',
+            dtick=max(1, floor.width_meters // 10)
         ),
         yaxis=dict(
             range=[0, floor.height_meters],
             title="Y (meters)",
             scaleanchor="x",
-            scaleratio=1
+            scaleratio=1,
+            dtick=max(1, floor.height_meters // 10)
         ),
         showlegend=True,
         legend=dict(x=1.02, y=1),
@@ -251,51 +277,110 @@ def render_zone_management():
         
         st.subheader("Create New Zone")
         
-        with st.form("create_zone"):
-            building_options = {b.name: b.id for b in buildings}
-            selected_building = st.selectbox("Building", options=list(building_options.keys()))
+        building_options = {b.name: b.id for b in buildings}
+        selected_building = st.selectbox("Building", options=list(building_options.keys()), key="zone_building")
+        
+        floors = session.query(Floor).filter(
+            Floor.building_id == building_options[selected_building]
+        ).order_by(Floor.floor_number).all()
+        
+        if not floors:
+            st.warning("No floor plans for this building.")
+            return
+        
+        floor_options = {f"Floor {f.floor_number}: {f.name or ''}": f.id for f in floors}
+        selected_floor_key = st.selectbox("Floor", options=list(floor_options.keys()), key="zone_floor")
+        selected_floor_id = floor_options[selected_floor_key]
+        
+        floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
+        if not floor:
+            st.warning("Floor not found.")
+            return
+        
+        existing_zones = session.query(Zone).filter(Zone.floor_id == selected_floor_id).all()
+        
+        gateways = session.query(Gateway).filter(
+            Gateway.floor_id == selected_floor_id,
+            Gateway.is_active == True
+        ).all()
+        gateways_data = [{'name': gw.name, 'x': gw.x_position, 'y': gw.y_position} for gw in gateways]
+        
+        col_form, col_preview = st.columns([1, 2])
+        
+        w = float(floor.width_meters)
+        h = float(floor.height_meters)
+        
+        with col_form:
+            st.markdown("#### Zone Settings")
             
-            floors = session.query(Floor).filter(
-                Floor.building_id == building_options[selected_building]
-            ).order_by(Floor.floor_number).all()
+            zone_name = st.text_input("Zone Name*", placeholder="e.g., Restricted Area", key="zone_name")
+            description = st.text_area("Description", placeholder="Zone description...", key="zone_desc", height=68)
+            color = st.color_picker("Zone Color", "#FF0000", key="zone_color")
             
-            if not floors:
-                st.warning("No floor plans for this building.")
-                st.form_submit_button("Create Zone", disabled=True)
-                return
+            st.markdown("#### Zone Position")
+            st.caption(f"Floor dimensions: {w}m x {h}m")
             
-            floor_options = {f"Floor {f.floor_number}: {f.name or ''}": f.id for f in floors}
-            selected_floor = st.selectbox("Floor", options=list(floor_options.keys()))
+            preset = st.selectbox(
+                "Quick Presets",
+                options=["Custom", "Top-Left Quarter", "Top-Right Quarter", "Bottom-Left Quarter", 
+                         "Bottom-Right Quarter", "Center", "Left Half", "Right Half", "Top Half", "Bottom Half"],
+                key="zone_preset"
+            )
             
-            col1, col2 = st.columns(2)
+            if preset == "Top-Left Quarter":
+                default_x_min, default_y_min = 0.0, h/2
+                default_x_max, default_y_max = w/2, h
+            elif preset == "Top-Right Quarter":
+                default_x_min, default_y_min = w/2, h/2
+                default_x_max, default_y_max = w, h
+            elif preset == "Bottom-Left Quarter":
+                default_x_min, default_y_min = 0.0, 0.0
+                default_x_max, default_y_max = w/2, h/2
+            elif preset == "Bottom-Right Quarter":
+                default_x_min, default_y_min = w/2, 0.0
+                default_x_max, default_y_max = w, h/2
+            elif preset == "Center":
+                default_x_min, default_y_min = w/4, h/4
+                default_x_max, default_y_max = 3*w/4, 3*h/4
+            elif preset == "Left Half":
+                default_x_min, default_y_min = 0.0, 0.0
+                default_x_max, default_y_max = w/2, h
+            elif preset == "Right Half":
+                default_x_min, default_y_min = w/2, 0.0
+                default_x_max, default_y_max = w, h
+            elif preset == "Top Half":
+                default_x_min, default_y_min = 0.0, h/2
+                default_x_max, default_y_max = w, h
+            elif preset == "Bottom Half":
+                default_x_min, default_y_min = 0.0, 0.0
+                default_x_max, default_y_max = w, h/2
+            else:
+                default_x_min, default_y_min = 0.0, 0.0
+                default_x_max, default_y_max = min(10.0, w), min(10.0, h)
             
-            with col1:
-                zone_name = st.text_input("Zone Name*", placeholder="e.g., Restricted Area")
-                description = st.text_area("Description", placeholder="Zone description...")
-                color = st.color_picker("Zone Color", "#FF0000")
+            col2a, col2b = st.columns(2)
+            with col2a:
+                x_min = st.number_input("X Min (m)", value=default_x_min, min_value=0.0, max_value=float(w), step=0.5, key="x_min")
+                y_min = st.number_input("Y Min (m)", value=default_y_min, min_value=0.0, max_value=float(h), step=0.5, key="y_min")
+            with col2b:
+                x_max = st.number_input("X Max (m)", value=default_x_max, min_value=0.0, max_value=float(w), step=0.5, key="x_max")
+                y_max = st.number_input("Y Max (m)", value=default_y_max, min_value=0.0, max_value=float(h), step=0.5, key="y_max")
             
-            with col2:
-                col2a, col2b = st.columns(2)
-                with col2a:
-                    x_min = st.number_input("X Min (m)", value=0.0, min_value=0.0)
-                    y_min = st.number_input("Y Min (m)", value=0.0, min_value=0.0)
-                with col2b:
-                    x_max = st.number_input("X Max (m)", value=10.0, min_value=0.0)
-                    y_max = st.number_input("Y Max (m)", value=10.0, min_value=0.0)
-                
-                alert_on_enter = st.checkbox("Alert on Enter", value=True)
-                alert_on_exit = st.checkbox("Alert on Exit", value=True)
+            st.markdown("#### Alerts")
+            col_alert1, col_alert2 = st.columns(2)
+            with col_alert1:
+                alert_on_enter = st.checkbox("Alert on Enter", value=True, key="alert_enter")
+            with col_alert2:
+                alert_on_exit = st.checkbox("Alert on Exit", value=True, key="alert_exit")
             
-            submitted = st.form_submit_button("Create Zone", type="primary")
-            
-            if submitted:
+            if st.button("Create Zone", type="primary", use_container_width=True):
                 if not zone_name:
                     st.error("Zone name is required")
                 elif x_max <= x_min or y_max <= y_min:
                     st.error("Max values must be greater than min values")
                 else:
                     zone = Zone(
-                        floor_id=floor_options[selected_floor],
+                        floor_id=selected_floor_id,
                         name=zone_name,
                         description=description,
                         x_min=x_min,
@@ -311,38 +396,81 @@ def render_zone_management():
                     st.success(f"Zone '{zone_name}' created!")
                     st.rerun()
         
+        with col_preview:
+            st.markdown("#### Floor Plan Preview")
+            st.caption("The dashed rectangle shows where your new zone will be placed")
+            
+            new_zone_preview = {
+                'x_min': x_min,
+                'y_min': y_min,
+                'x_max': x_max,
+                'y_max': y_max,
+                'color': color,
+                'name': zone_name or "New Zone"
+            }
+            
+            fig = get_zones_figure(floor, existing_zones, gateways_data, new_zone=new_zone_preview)
+            st.plotly_chart(fig, use_container_width=True, key="zone_preview_chart")
+            
+            if existing_zones:
+                st.caption(f"Existing zones shown in solid colors ({len(existing_zones)} zones)")
+        
         st.markdown("---")
         st.subheader("Existing Zones")
         
         zones = session.query(Zone).order_by(Zone.name).all()
         
         if zones:
+            zones_by_floor = {}
             for zone in zones:
-                floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
-                status_icon = "🟢" if zone.is_active else "🔴"
+                floor_obj = session.query(Floor).filter(Floor.id == zone.floor_id).first()
+                floor_key = f"{floor_obj.name or f'Floor {floor_obj.floor_number}'}" if floor_obj else "Unknown"
+                if floor_key not in zones_by_floor:
+                    zones_by_floor[floor_key] = []
+                zones_by_floor[floor_key].append((zone, floor_obj))
+            
+            for floor_name, floor_zones in zones_by_floor.items():
+                st.markdown(f"**{floor_name}**")
                 
-                with st.expander(f"{status_icon} {zone.name}", expanded=False):
-                    col1, col2, col3 = st.columns([2, 2, 1])
+                for zone, floor_obj in floor_zones:
+                    status_icon = "🟢" if zone.is_active else "🔴"
                     
-                    with col1:
-                        st.write(f"**Floor:** {floor.name if floor else 'Unknown'}")
-                        st.write(f"**Area:** ({zone.x_min}, {zone.y_min}) to ({zone.x_max}, {zone.y_max})")
-                        st.write(f"**Description:** {zone.description or 'None'}")
-                    
-                    with col2:
-                        st.write(f"**Alert on Enter:** {'Yes' if zone.alert_on_enter else 'No'}")
-                        st.write(f"**Alert on Exit:** {'Yes' if zone.alert_on_exit else 'No'}")
-                        st.markdown(f"**Color:** <span style='color:{zone.color}'>{zone.color}</span>", unsafe_allow_html=True)
-                    
-                    with col3:
-                        if st.button("Toggle Active", key=f"toggle_zone_{zone.id}"):
-                            zone.is_active = not zone.is_active
-                            st.rerun()
+                    with st.expander(f"{status_icon} {zone.name}", expanded=False):
+                        col1, col2, col3 = st.columns([2, 2, 1])
                         
-                        if st.button("Delete", key=f"del_zone_{zone.id}", type="secondary"):
-                            session.delete(zone)
-                            st.success(f"Zone '{zone.name}' deleted")
-                            st.rerun()
+                        with col1:
+                            st.write(f"**Area:** ({zone.x_min:.1f}, {zone.y_min:.1f}) to ({zone.x_max:.1f}, {zone.y_max:.1f})")
+                            st.write(f"**Size:** {zone.x_max - zone.x_min:.1f}m x {zone.y_max - zone.y_min:.1f}m")
+                            st.write(f"**Description:** {zone.description or 'None'}")
+                        
+                        with col2:
+                            st.write(f"**Alert on Enter:** {'Yes' if zone.alert_on_enter else 'No'}")
+                            st.write(f"**Alert on Exit:** {'Yes' if zone.alert_on_exit else 'No'}")
+                            st.markdown(f"**Color:** <span style='background-color:{zone.color}; padding: 2px 10px; border-radius: 3px;'>&nbsp;</span> {zone.color}", unsafe_allow_html=True)
+                        
+                        with col3:
+                            if st.button("Toggle Active", key=f"toggle_zone_{zone.id}"):
+                                zone.is_active = not zone.is_active
+                                st.rerun()
+                            
+                            if st.button("Edit", key=f"edit_zone_{zone.id}"):
+                                st.session_state['editing_zone_id'] = zone.id
+                                st.rerun()
+                            
+                            if st.button("Delete", key=f"del_zone_{zone.id}", type="secondary"):
+                                session.delete(zone)
+                                st.success(f"Zone '{zone.name}' deleted")
+                                st.rerun()
+                        
+                        if floor_obj:
+                            st.markdown("**Zone Preview:**")
+                            gws = session.query(Gateway).filter(
+                                Gateway.floor_id == floor_obj.id,
+                                Gateway.is_active == True
+                            ).all()
+                            gw_data = [{'name': gw.name, 'x': gw.x_position, 'y': gw.y_position} for gw in gws]
+                            zone_fig = get_zones_figure(floor_obj, [zone], gw_data)
+                            st.plotly_chart(zone_fig, use_container_width=True, key=f"zone_preview_{zone.id}")
         else:
             st.info("No zones created yet.")
 
