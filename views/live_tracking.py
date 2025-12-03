@@ -9,13 +9,99 @@ import plotly.graph_objects as go
 import numpy as np
 import time
 import base64
+import json
+import math
+
+
+def latlon_to_meters(lat, lon, origin_lat, origin_lon):
+    """Convert lat/lon to local meter coordinates using equirectangular projection"""
+    dx = (lon - origin_lon) * math.cos(math.radians(origin_lat)) * 111000
+    dy = (lat - origin_lat) * 111000
+    return dx, dy
+
+
+def render_geojson_floor_plan(fig, floor):
+    """Render GeoJSON floor plan as Plotly traces in meter coordinates"""
+    if not floor.floor_plan_geojson or not floor.origin_lat or not floor.origin_lon:
+        return False
+    
+    try:
+        geojson_data = json.loads(floor.floor_plan_geojson)
+        
+        for feature in geojson_data.get('features', []):
+            props = feature.get('properties', {})
+            geom = feature.get('geometry', {})
+            geom_type = props.get('geomType', '')
+            
+            if geom_type == 'room' and geom.get('type') == 'Polygon':
+                coords = geom.get('coordinates', [[]])[0]
+                if coords:
+                    xs = []
+                    ys = []
+                    for c in coords:
+                        lon, lat = c[0], c[1]
+                        x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                        xs.append(x)
+                        ys.append(y)
+                    
+                    name = props.get('name', 'Unnamed')
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        fill='toself',
+                        fillcolor='rgba(46, 92, 191, 0.15)',
+                        line=dict(color='#2e5cbf', width=1),
+                        name=name,
+                        hovertemplate=f"<b>{name}</b><extra></extra>",
+                        mode='lines',
+                        showlegend=False
+                    ))
+                    
+                    center_x = sum(xs) / len(xs)
+                    center_y = sum(ys) / len(ys)
+                    fig.add_annotation(
+                        x=center_x,
+                        y=center_y,
+                        text=name[:12],
+                        showarrow=False,
+                        font=dict(size=8, color='#1a1a1a')
+                    )
+            
+            elif geom_type == 'wall' and geom.get('type') == 'LineString':
+                coords = geom.get('coordinates', [])
+                if coords:
+                    xs = []
+                    ys = []
+                    for c in coords:
+                        lon, lat = c[0], c[1]
+                        x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                        xs.append(x)
+                        ys.append(y)
+                    
+                    wall_type = props.get('subType', 'inner')
+                    line_width = 2 if wall_type == 'outer' else 1
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        mode='lines',
+                        line=dict(color='#333', width=line_width),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    ))
+        
+        return True
+    except Exception as e:
+        return False
 
 
 def create_floor_plan_base(floor):
-    """Create base figure with floor plan image if available"""
+    """Create base figure with floor plan image or GeoJSON if available"""
     fig = go.Figure()
     
-    has_image = False
+    has_floor_plan = False
+    
     if floor.floor_plan_image:
         try:
             image = Image.open(BytesIO(floor.floor_plan_image))
@@ -37,22 +123,25 @@ def create_floor_plan_base(floor):
                     layer="below"
                 )
             )
-            has_image = True
+            has_floor_plan = True
         except Exception as e:
             pass
+    
+    if not has_floor_plan and floor.floor_plan_geojson:
+        has_floor_plan = render_geojson_floor_plan(fig, floor)
     
     fig.update_layout(
         xaxis=dict(
             range=[0, floor.width_meters],
             title="X (meters)",
-            showgrid=not has_image,
+            showgrid=not has_floor_plan,
             zeroline=False,
             constrain='domain'
         ),
         yaxis=dict(
             range=[0, floor.height_meters],
             title="Y (meters)",
-            showgrid=not has_image,
+            showgrid=not has_floor_plan,
             zeroline=False,
             scaleanchor="x",
             scaleratio=1
@@ -61,10 +150,10 @@ def create_floor_plan_base(floor):
         legend=dict(x=1.02, y=1, bgcolor='rgba(255,255,255,0.8)'),
         margin=dict(l=50, r=150, t=50, b=50),
         height=600,
-        plot_bgcolor='rgba(240,240,240,0.3)' if not has_image else 'rgba(255,255,255,0)'
+        plot_bgcolor='rgba(240,240,240,0.3)' if not has_floor_plan else 'rgba(255,255,255,0)'
     )
     
-    return fig, has_image
+    return fig, has_floor_plan
 
 
 def add_gateways_to_figure(fig, gateways_data):
@@ -352,8 +441,8 @@ def render():
         with col2:
             floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
             
-            if not floor.floor_plan_image:
-                st.warning("No floor plan image uploaded for this floor. Please upload a floor plan image in the Buildings section to see accurate room layouts.")
+            if not floor.floor_plan_image and not floor.floor_plan_geojson:
+                st.warning("No floor plan uploaded for this floor. Please upload a floor plan in the Buildings section.")
                 st.info(f"Current floor dimensions: {floor.width_meters:.1f}m x {floor.height_meters:.1f}m")
             
             gateways = session.query(Gateway).filter(
