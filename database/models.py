@@ -165,6 +165,10 @@ class MQTTConfig(Base):
     publish_enabled = Column(Boolean, default=False)
     publish_positions_topic = Column(String(255), default='careflow/positions')
     publish_alerts_topic = Column(String(255), default='careflow/alerts')
+    refresh_interval = Column(Float, default=1.0)
+    signal_window_seconds = Column(Float, default=3.0)
+    rssi_smoothing_enabled = Column(Boolean, default=True)
+    position_smoothing_alpha = Column(Float, default=0.4)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
