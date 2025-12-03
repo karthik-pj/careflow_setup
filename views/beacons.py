@@ -163,6 +163,47 @@ def render():
         st.markdown("---")
         st.subheader("Registered Beacons")
         
+        auto_discovered_count = session.query(Beacon).filter(
+            Beacon.name.like('Auto-%')
+        ).count()
+        
+        if auto_discovered_count > 0:
+            st.warning(f"You have {auto_discovered_count} auto-discovered beacon(s) that may be unwanted devices")
+            
+            with st.expander("Bulk Delete Auto-Discovered Beacons", expanded=False):
+                st.caption("These are BLE devices automatically detected by gateways (phones, headphones, etc.)")
+                
+                col_bulk1, col_bulk2 = st.columns(2)
+                
+                with col_bulk1:
+                    if st.button("Delete All Auto-Discovered", type="secondary"):
+                        st.session_state['confirm_delete_auto'] = True
+                
+                with col_bulk2:
+                    if st.session_state.get('confirm_delete_auto', False):
+                        st.warning("This will delete all auto-discovered beacons and their related data!")
+                        if st.button("Confirm Delete", type="primary"):
+                            from database import RSSISignal, Position, ZoneAlert, CalibrationPoint
+                            auto_beacons = session.query(Beacon).filter(
+                                Beacon.name.like('Auto-%')
+                            ).all()
+                            
+                            deleted_count = 0
+                            for beacon in auto_beacons:
+                                session.query(ZoneAlert).filter(ZoneAlert.beacon_id == beacon.id).delete()
+                                session.query(CalibrationPoint).filter(CalibrationPoint.beacon_id == beacon.id).delete()
+                                session.query(RSSISignal).filter(RSSISignal.beacon_id == beacon.id).delete()
+                                session.query(Position).filter(Position.beacon_id == beacon.id).delete()
+                                session.delete(beacon)
+                                deleted_count += 1
+                            
+                            session.commit()
+                            st.session_state['confirm_delete_auto'] = False
+                            set_success_and_rerun(f"Deleted {deleted_count} auto-discovered beacons")
+                        if st.button("Cancel", key="cancel_bulk_delete"):
+                            st.session_state['confirm_delete_auto'] = False
+                            st.rerun()
+        
         filter_col1, filter_col2 = st.columns(2)
         with filter_col1:
             filter_type = st.selectbox(

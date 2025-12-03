@@ -163,14 +163,18 @@ class SignalProcessor:
                 ).first()
                 
                 if not beacon:
-                    beacon = Beacon(
-                        mac_address=msg.beacon_mac,
-                        name=f"Auto-{msg.beacon_mac[-8:]}",
-                        resource_type="Device",
-                        is_active=True
-                    )
-                    session.add(beacon)
-                    session.flush()
+                    mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
+                    if mqtt_config and mqtt_config.auto_discover_beacons:
+                        beacon = Beacon(
+                            mac_address=msg.beacon_mac,
+                            name=f"Auto-{msg.beacon_mac[-8:]}",
+                            resource_type="Device",
+                            is_active=True
+                        )
+                        session.add(beacon)
+                        session.flush()
+                    else:
+                        return
                 
                 signal = RSSISignal(
                     gateway_id=gateway.id,

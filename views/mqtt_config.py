@@ -236,6 +236,26 @@ def render():
                 st.warning("Publisher Status: Not connected (will connect when processor starts)")
         
         st.markdown("---")
+        st.subheader("Beacon Discovery Settings")
+        
+        auto_discover = st.checkbox(
+            "Auto-Discover New Beacons",
+            value=getattr(existing_config, 'auto_discover_beacons', False) if existing_config else False,
+            help="When enabled, automatically register new BLE devices detected by gateways. Disable this to only track manually registered beacons."
+        )
+        
+        if existing_config:
+            current_auto_discover = getattr(existing_config, 'auto_discover_beacons', False)
+            if auto_discover != current_auto_discover:
+                existing_config.auto_discover_beacons = auto_discover
+                session.commit()
+                if auto_discover:
+                    st.success("Auto-discovery enabled - new beacons will be registered automatically")
+                else:
+                    st.info("Auto-discovery disabled - only registered beacons will be tracked")
+                st.rerun()
+        
+        st.markdown("---")
         st.subheader("Signal Processor Control")
         
         processor = get_signal_processor()
