@@ -116,12 +116,8 @@ class MQTTHandler:
     def _on_message(self, client, userdata, msg):
         """Callback when message received"""
         try:
-            print(f"[MQTT DEBUG] Topic: {msg.topic}")
-            print(f"[MQTT DEBUG] Payload: {msg.payload[:500]}")
-            
             parsed_message = self._parse_message(msg.topic, msg.payload)
             if parsed_message:
-                print(f"[MQTT DEBUG] Parsed: gateway={parsed_message.gateway_mac}, beacon={parsed_message.beacon_mac}, rssi={parsed_message.rssi}")
                 try:
                     self.message_queue.put_nowait(parsed_message)
                 except queue.Full:
@@ -131,12 +127,10 @@ class MQTTHandler:
                 for callback in self.callbacks:
                     try:
                         callback(parsed_message)
-                    except Exception as e:
-                        print(f"Callback error: {e}")
-            else:
-                print(f"[MQTT DEBUG] Failed to parse message - returned None")
-        except Exception as e:
-            print(f"Message parsing error: {e}")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
     
     def _parse_message(self, topic: str, payload: bytes) -> Optional[MQTTMessage]:
         """
@@ -209,12 +203,17 @@ class MQTTHandler:
                     base_timestamp = datetime.utcnow()
                 
                 beacons = data.get('beacons', []) or data.get('data', [])
+                
+                if not isinstance(beacons, list):
+                    return None
+                
                 if not beacons:
-                    print(f"[MQTT DEBUG] No beacons in message from gateway {gateway_mac}")
                     return None
                 
                 messages = []
                 for beacon in beacons:
+                    if not isinstance(beacon, dict):
+                        continue
                     beacon_mac_raw = beacon.get('mac', '')
                     if len(beacon_mac_raw) == 12:
                         beacon_mac = ':'.join(beacon_mac_raw[j:j+2].upper() for j in range(0, 12, 2))

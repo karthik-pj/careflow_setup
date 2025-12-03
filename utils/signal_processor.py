@@ -283,6 +283,7 @@ class SignalProcessor:
                             calculation_method='triangulation'
                         )
                         session.add(position)
+                        session.commit()
                         self._stats['positions_calculated'] += 1
                         
                         if self._publisher and self._publisher.is_connected():

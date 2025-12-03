@@ -336,7 +336,7 @@ if not st.session_state['processor_init_attempted']:
                     processor.start()
         
         st.session_state['processor_init_attempted'] = True
-    except Exception as e:
+    except Exception:
         st.session_state['processor_init_attempted'] = True
 
 logo_path = Path("attached_assets/CAREFLOW LOGO-Color_1764612034940.png")
