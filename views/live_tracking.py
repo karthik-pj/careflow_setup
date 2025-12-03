@@ -162,6 +162,47 @@ def render():
             selected_floor_name = st.selectbox("Floor", options=list(floor_options.keys()))
             selected_floor_id = floor_options[selected_floor_name]
             
+            st.markdown("---")
+            st.subheader("Beacon Selection")
+            
+            all_beacons = session.query(Beacon).order_by(Beacon.name).all()
+            
+            resource_types = list(set([b.resource_type for b in all_beacons if b.resource_type]))
+            resource_types.sort()
+            
+            filter_by_type = st.multiselect(
+                "Filter by Type",
+                options=resource_types,
+                default=[],
+                help="Filter beacons by resource type"
+            )
+            
+            if filter_by_type:
+                filtered_beacons = [b for b in all_beacons if b.resource_type in filter_by_type]
+            else:
+                filtered_beacons = all_beacons
+            
+            beacon_options = {f"{b.name} ({b.mac_address[-8:]})": b.id for b in filtered_beacons}
+            
+            select_all = st.checkbox("Select All Beacons", value=True)
+            
+            if select_all:
+                selected_beacon_ids = [b.id for b in filtered_beacons]
+                selected_beacon_names = list(beacon_options.keys())
+            else:
+                selected_beacon_names = st.multiselect(
+                    "Select Beacons to Track",
+                    options=list(beacon_options.keys()),
+                    default=[],
+                    help="Choose which beacons to display on the floor plan"
+                )
+                selected_beacon_ids = [beacon_options[name] for name in selected_beacon_names]
+            
+            st.caption(f"{len(selected_beacon_ids)} beacon(s) selected")
+            
+            st.markdown("---")
+            st.subheader("Display Options")
+            
             show_trails = st.checkbox("Show movement trails", value=True)
             trail_duration = st.slider("Trail duration (seconds)", 10, 300, 60)
             
@@ -205,17 +246,27 @@ def render():
             
             cutoff_time = datetime.utcnow() - timedelta(seconds=trail_duration)
             
-            recent_positions = session.query(Position).filter(
-                Position.floor_id == selected_floor_id,
-                Position.timestamp >= cutoff_time
-            ).order_by(Position.timestamp.asc()).all()
+            if selected_beacon_ids:
+                recent_positions = session.query(Position).filter(
+                    Position.floor_id == selected_floor_id,
+                    Position.timestamp >= cutoff_time,
+                    Position.beacon_id.in_(selected_beacon_ids)
+                ).order_by(Position.timestamp.asc()).all()
+            else:
+                recent_positions = []
             
             positions_data = {}
+            beacon_info = {}
             for pos in recent_positions:
                 beacon = session.query(Beacon).filter(Beacon.id == pos.beacon_id).first()
                 if beacon:
                     if beacon.name not in positions_data:
                         positions_data[beacon.name] = []
+                        beacon_info[beacon.name] = {
+                            'mac': beacon.mac_address,
+                            'type': beacon.resource_type,
+                            'id': beacon.id
+                        }
                     positions_data[beacon.name].append({
                         'x': pos.x_position,
                         'y': pos.y_position,
@@ -227,20 +278,26 @@ def render():
             
             st.subheader(f"Floor Plan: {floor.name or f'Floor {floor.floor_number}'}")
             
+            if not floor.floor_plan_image:
+                st.info("No floor plan image uploaded for this floor. You can add one in the Buildings section.")
+            
             fig = get_floor_plan_figure(floor, positions_data, gateways_data, show_trails)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, key="floor_plan_chart")
             
             st.markdown("---")
             
-            col_stats1, col_stats2, col_stats3 = st.columns(3)
+            col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
             
             with col_stats1:
                 st.metric("Active Gateways", len(gateways))
             
             with col_stats2:
-                st.metric("Tracked Beacons", len(positions_data))
+                st.metric("Beacons Visible", len(positions_data))
             
             with col_stats3:
+                st.metric("Selected Beacons", len(selected_beacon_ids))
+            
+            with col_stats4:
                 total_positions = sum(len(p) for p in positions_data.values())
                 st.metric("Position Updates", total_positions)
             
@@ -250,14 +307,32 @@ def render():
                 for beacon_name, pos_list in positions_data.items():
                     if pos_list:
                         latest = pos_list[-1]
-                        with st.expander(f"📍 {beacon_name}", expanded=False):
+                        info = beacon_info.get(beacon_name, {})
+                        resource_icon = {
+                            'Staff': '👤',
+                            'Patient': '🏥',
+                            'Asset': '📦',
+                            'Device': '📱',
+                            'Vehicle': '🚗',
+                            'Equipment': '🔧'
+                        }.get(info.get('type', ''), '📍')
+                        
+                        with st.expander(f"{resource_icon} {beacon_name} ({info.get('type', 'Unknown')})", expanded=False):
                             c1, c2, c3 = st.columns(3)
                             with c1:
                                 st.write(f"**Position:** ({latest['x']:.2f}, {latest['y']:.2f})")
+                                st.write(f"**MAC:** {info.get('mac', 'N/A')}")
                             with c2:
                                 st.write(f"**Speed:** {latest.get('speed', 0):.2f} m/s")
+                                st.write(f"**Type:** {info.get('type', 'Unknown')}")
                             with c3:
                                 st.write(f"**Last Update:** {latest['timestamp'].strftime('%H:%M:%S')}")
+                                st.write(f"**Trail Points:** {len(pos_list)}")
+            else:
+                if selected_beacon_ids:
+                    st.info("No recent position data for the selected beacons. Make sure the signal processor is running and beacons are in range of the gateways.")
+                else:
+                    st.info("No beacons selected. Use the sidebar to select beacons to track.")
             
             if auto_refresh:
                 time.sleep(refresh_interval)
