@@ -375,7 +375,8 @@ page = st.sidebar.radio(
         "Calibration",
         "Signal Monitor"
     ],
-    index=0
+    index=0,
+    key="main_navigation"
 )
 
 st.sidebar.markdown("---")
