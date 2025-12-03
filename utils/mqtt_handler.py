@@ -210,6 +210,11 @@ class MQTTHandler:
                 if not beacons:
                     return None
                 
+                # Debug: Log all beacon MACs in this message
+                beacon_macs = [b.get('mac', 'unknown') for b in beacons if isinstance(b, dict)]
+                if len(beacon_macs) > 0:
+                    print(f"[MQTT DEBUG] Gateway {gateway_mac} sent {len(beacon_macs)} beacons: {beacon_macs}")
+                
                 messages = []
                 for beacon in beacons:
                     if not isinstance(beacon, dict):
