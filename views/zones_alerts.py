@@ -5,6 +5,8 @@ from io import BytesIO
 from PIL import Image
 import plotly.graph_objects as go
 import base64
+import json
+import math
 from utils.mqtt_publisher import get_mqtt_publisher
 
 
@@ -13,10 +15,94 @@ def point_in_zone(x, y, zone):
     return zone.x_min <= x <= zone.x_max and zone.y_min <= y <= zone.y_max
 
 
+def latlon_to_meters(lat, lon, origin_lat, origin_lon):
+    """Convert lat/lon to local meter coordinates using equirectangular projection"""
+    dx = (lon - origin_lon) * math.cos(math.radians(origin_lat)) * 111000
+    dy = (lat - origin_lat) * 111000
+    return dx, dy
+
+
+def render_geojson_floor_plan(fig, floor):
+    """Render GeoJSON floor plan as Plotly traces in meter coordinates"""
+    if not floor.floor_plan_geojson or not floor.origin_lat or not floor.origin_lon:
+        return False
+    
+    try:
+        geojson_data = json.loads(floor.floor_plan_geojson)
+        
+        for feature in geojson_data.get('features', []):
+            props = feature.get('properties', {})
+            geom = feature.get('geometry', {})
+            geom_type = props.get('geomType', '')
+            
+            if geom_type == 'room' and geom.get('type') == 'Polygon':
+                coords = geom.get('coordinates', [[]])[0]
+                if coords:
+                    xs = []
+                    ys = []
+                    for c in coords:
+                        lon, lat = c[0], c[1]
+                        x, y = latlon_to_meters(lat, lon, float(floor.origin_lat), float(floor.origin_lon))
+                        xs.append(x)
+                        ys.append(y)
+                    
+                    name = props.get('name', 'Unnamed')
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        fill='toself',
+                        fillcolor='rgba(46, 92, 191, 0.15)',
+                        line=dict(color='#2e5cbf', width=1),
+                        name=name,
+                        hovertemplate=f"<b>{name}</b><extra></extra>",
+                        mode='lines',
+                        showlegend=False
+                    ))
+                    
+                    center_x = sum(xs) / len(xs)
+                    center_y = sum(ys) / len(ys)
+                    fig.add_annotation(
+                        x=center_x,
+                        y=center_y,
+                        text=name[:12],
+                        showarrow=False,
+                        font=dict(size=8, color='#1a1a1a')
+                    )
+            
+            elif geom_type == 'wall' and geom.get('type') == 'LineString':
+                coords = geom.get('coordinates', [])
+                if coords:
+                    xs = []
+                    ys = []
+                    for c in coords:
+                        lon, lat = c[0], c[1]
+                        x, y = latlon_to_meters(lat, lon, float(floor.origin_lat), float(floor.origin_lon))
+                        xs.append(x)
+                        ys.append(y)
+                    
+                    wall_type = props.get('subType', 'inner')
+                    line_width = 2 if wall_type == 'outer' else 1
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        mode='lines',
+                        line=dict(color='#333', width=line_width),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    ))
+        
+        return True
+    except Exception:
+        return False
+
+
 def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editable=False, new_zone=None):
     """Create a plotly figure with floor plan, zones, and current positions"""
     
     fig = go.Figure()
+    has_floor_plan = False
     
     if floor.floor_plan_image:
         try:
@@ -32,16 +118,20 @@ def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editabl
                     xref="x",
                     yref="y",
                     x=0,
-                    y=floor.height_meters,
-                    sizex=floor.width_meters,
-                    sizey=floor.height_meters,
+                    y=float(floor.height_meters),
+                    sizex=float(floor.width_meters),
+                    sizey=float(floor.height_meters),
                     sizing="stretch",
-                    opacity=0.8,
+                    opacity=0.9,
                     layer="below"
                 )
             )
+            has_floor_plan = True
         except Exception:
             pass
+    
+    if not has_floor_plan and floor.floor_plan_geojson:
+        has_floor_plan = render_geojson_floor_plan(fig, floor)
     
     for zone in zones:
         fig.add_shape(
@@ -112,24 +202,32 @@ def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editabl
                 name=beacon_name
             ))
     
+    w = float(floor.width_meters)
+    h = float(floor.height_meters)
+    
     fig.update_layout(
         xaxis=dict(
-            range=[0, floor.width_meters],
+            range=[0, w],
             title="X (meters)",
+            showgrid=not has_floor_plan,
+            zeroline=False,
             constrain='domain',
-            dtick=max(1, floor.width_meters // 10)
+            dtick=max(1, w // 10)
         ),
         yaxis=dict(
-            range=[0, floor.height_meters],
+            range=[0, h],
             title="Y (meters)",
+            showgrid=not has_floor_plan,
+            zeroline=False,
             scaleanchor="x",
             scaleratio=1,
-            dtick=max(1, floor.height_meters // 10)
+            dtick=max(1, h // 10)
         ),
         showlegend=True,
-        legend=dict(x=1.02, y=1),
+        legend=dict(x=1.02, y=1, bgcolor='rgba(255,255,255,0.8)'),
         margin=dict(l=50, r=150, t=50, b=50),
-        height=500
+        height=500,
+        plot_bgcolor='rgba(240,240,240,0.3)' if not has_floor_plan else 'rgba(255,255,255,0)'
     )
     
     return fig
