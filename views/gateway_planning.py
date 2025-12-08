@@ -3,10 +3,202 @@ import plotly.graph_objects as go
 import numpy as np
 import json
 import base64
+import math
 from io import BytesIO
+from PIL import Image
 from database.models import (
     get_db_session, Building, Floor, Gateway, GatewayPlan, PlannedGateway
 )
+
+
+def latlon_to_meters(lat, lon, origin_lat, origin_lon):
+    """Convert lat/lon to local meter coordinates using equirectangular projection"""
+    dx = (lon - origin_lon) * math.cos(math.radians(origin_lat)) * 111000
+    dy = (lat - origin_lat) * 111000
+    return dx, dy
+
+
+def render_dxf_floor_plan(fig, floor):
+    """Render DXF floor plan (stored as GeoJSON) in local meter coordinates"""
+    if not floor.floor_plan_geojson:
+        return False
+    
+    try:
+        geojson_data = json.loads(floor.floor_plan_geojson)
+        
+        for feature in geojson_data.get('features', []):
+            props = feature.get('properties', {})
+            geom = feature.get('geometry', {})
+            geom_type = props.get('geomType', '')
+            
+            if geom.get('type') == 'Polygon':
+                coords = geom.get('coordinates', [[]])[0]
+                if coords:
+                    xs = [c[0] for c in coords]
+                    ys = [c[1] for c in coords]
+                    
+                    name = props.get('name', 'Unnamed')
+                    
+                    if geom_type == 'room':
+                        fill_color = 'rgba(46, 92, 191, 0.15)'
+                        line_color = '#2e5cbf'
+                    else:
+                        fill_color = 'rgba(200, 200, 200, 0.1)'
+                        line_color = '#666'
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        fill='toself',
+                        fillcolor=fill_color,
+                        line=dict(color=line_color, width=1),
+                        name=name,
+                        hovertemplate=f"<b>{name}</b><extra></extra>",
+                        mode='lines',
+                        showlegend=False
+                    ))
+            
+            elif geom.get('type') == 'LineString':
+                coords = geom.get('coordinates', [])
+                if coords:
+                    xs = [c[0] for c in coords]
+                    ys = [c[1] for c in coords]
+                    
+                    if geom_type == 'wall':
+                        line_width = 2
+                        line_color = '#333'
+                    else:
+                        line_width = 1
+                        line_color = '#666'
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        mode='lines',
+                        line=dict(color=line_color, width=line_width),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    ))
+        
+        return True
+    except Exception as e:
+        return False
+
+
+def render_geojson_floor_plan(fig, floor):
+    """Render GeoJSON floor plan as Plotly traces in meter coordinates"""
+    if not floor.floor_plan_geojson or not floor.origin_lat or not floor.origin_lon:
+        return False
+    
+    try:
+        geojson_data = json.loads(floor.floor_plan_geojson)
+        
+        for feature in geojson_data.get('features', []):
+            props = feature.get('properties', {})
+            geom = feature.get('geometry', {})
+            geom_type = props.get('geomType', '')
+            
+            if geom_type == 'room' and geom.get('type') == 'Polygon':
+                coords = geom.get('coordinates', [[]])[0]
+                if coords:
+                    xs = []
+                    ys = []
+                    for c in coords:
+                        lon, lat = c[0], c[1]
+                        x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                        xs.append(x)
+                        ys.append(y)
+                    
+                    name = props.get('name', 'Unnamed')
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        fill='toself',
+                        fillcolor='rgba(46, 92, 191, 0.15)',
+                        line=dict(color='#2e5cbf', width=1),
+                        name=name,
+                        hovertemplate=f"<b>{name}</b><extra></extra>",
+                        mode='lines',
+                        showlegend=False
+                    ))
+                    
+                    center_x = sum(xs) / len(xs)
+                    center_y = sum(ys) / len(ys)
+                    fig.add_annotation(
+                        x=center_x,
+                        y=center_y,
+                        text=name[:12],
+                        showarrow=False,
+                        font=dict(size=8, color='#1a1a1a')
+                    )
+            
+            elif geom_type == 'wall' and geom.get('type') == 'LineString':
+                coords = geom.get('coordinates', [])
+                if coords:
+                    xs = []
+                    ys = []
+                    for c in coords:
+                        lon, lat = c[0], c[1]
+                        x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                        xs.append(x)
+                        ys.append(y)
+                    
+                    wall_type = props.get('subType', 'inner')
+                    line_width = 2 if wall_type == 'outer' else 1
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        mode='lines',
+                        line=dict(color='#333', width=line_width),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    ))
+        
+        return True
+    except Exception as e:
+        return False
+
+
+def create_floor_plan_figure(floor):
+    """Create base figure with floor plan image or GeoJSON/DXF if available"""
+    fig = go.Figure()
+    
+    has_floor_plan = False
+    
+    if floor.floor_plan_image:
+        try:
+            image = Image.open(BytesIO(floor.floor_plan_image))
+            buffered = BytesIO()
+            image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            
+            fig.add_layout_image(
+                dict(
+                    source=f"data:image/png;base64,{img_str}",
+                    xref="x",
+                    yref="y",
+                    x=0,
+                    y=floor.height_meters,
+                    sizex=floor.width_meters,
+                    sizey=floor.height_meters,
+                    sizing="stretch",
+                    opacity=0.9,
+                    layer="below"
+                )
+            )
+            has_floor_plan = True
+        except Exception as e:
+            pass
+    
+    if not has_floor_plan and floor.floor_plan_type == 'dxf' and floor.floor_plan_geojson:
+        has_floor_plan = render_dxf_floor_plan(fig, floor)
+    
+    if not has_floor_plan and floor.floor_plan_geojson:
+        has_floor_plan = render_geojson_floor_plan(fig, floor)
+    
+    return fig, has_floor_plan
 
 
 def calculate_recommended_gateways(floor_area: float, target_accuracy: float, signal_range: float = 15.0) -> dict:
@@ -336,73 +528,19 @@ def render_gateway_planning():
                 floor_area = selected_floor.width_meters * selected_floor.height_meters
                 effective_recommendations = calculate_recommended_gateways(floor_area, effective_target_accuracy, effective_signal_range)
                 
-                fig = go.Figure()
-                
                 floor_width = selected_floor.width_meters
                 floor_height = selected_floor.height_meters
                 
-                if selected_floor.floor_plan_image:
-                    try:
-                        img_base64 = base64.b64encode(selected_floor.floor_plan_image).decode()
-                        img_src = f"data:image/{selected_floor.floor_plan_filename.split('.')[-1] if selected_floor.floor_plan_filename else 'png'};base64,{img_base64}"
-                        
-                        fig.add_layout_image(
-                            dict(
-                                source=img_src,
-                                xref="x",
-                                yref="y",
-                                x=0,
-                                y=floor_height,
-                                sizex=floor_width,
-                                sizey=floor_height,
-                                sizing="stretch",
-                                opacity=0.7,
-                                layer="below"
-                            )
-                        )
-                    except Exception:
-                        pass
-                elif selected_floor.floor_plan_geojson:
-                    try:
-                        geojson_data = json.loads(selected_floor.floor_plan_geojson)
-                        if 'features' in geojson_data:
-                            for feature in geojson_data['features']:
-                                if feature['geometry']['type'] == 'Polygon':
-                                    coords = feature['geometry']['coordinates'][0]
-                                    x_coords = [c[0] for c in coords]
-                                    y_coords = [c[1] for c in coords]
-                                    fig.add_trace(go.Scatter(
-                                        x=x_coords,
-                                        y=y_coords,
-                                        mode='lines',
-                                        line=dict(color='#666666', width=1),
-                                        fill='toself',
-                                        fillcolor='rgba(200,200,200,0.3)',
-                                        showlegend=False,
-                                        hoverinfo='skip'
-                                    ))
-                                elif feature['geometry']['type'] == 'LineString':
-                                    coords = feature['geometry']['coordinates']
-                                    x_coords = [c[0] for c in coords]
-                                    y_coords = [c[1] for c in coords]
-                                    fig.add_trace(go.Scatter(
-                                        x=x_coords,
-                                        y=y_coords,
-                                        mode='lines',
-                                        line=dict(color='#444444', width=1),
-                                        showlegend=False,
-                                        hoverinfo='skip'
-                                    ))
-                    except Exception:
-                        pass
+                fig, has_floor_plan = create_floor_plan_figure(selected_floor)
                 
-                fig.add_shape(
-                    type="rect",
-                    x0=0, y0=0,
-                    x1=floor_width, y1=floor_height,
-                    line=dict(color="#2e5cbf", width=2),
-                    fillcolor="rgba(46, 92, 191, 0.05)"
-                )
+                if not has_floor_plan:
+                    fig.add_shape(
+                        type="rect",
+                        x0=0, y0=0,
+                        x1=floor_width, y1=floor_height,
+                        line=dict(color="#2e5cbf", width=2),
+                        fillcolor="rgba(46, 92, 191, 0.05)"
+                    )
                 
                 planned_gateways = []
                 if current_plan:
@@ -490,16 +628,18 @@ def render_gateway_planning():
                         range=[-2, floor_width + 2],
                         scaleanchor="y",
                         scaleratio=1,
-                        showgrid=True,
+                        showgrid=not has_floor_plan,
                         gridwidth=1,
-                        gridcolor='rgba(0,0,0,0.1)'
+                        gridcolor='rgba(0,0,0,0.1)',
+                        zeroline=False
                     ),
                     yaxis=dict(
                         title="Y (meters)",
                         range=[-2, floor_height + 2],
-                        showgrid=True,
+                        showgrid=not has_floor_plan,
                         gridwidth=1,
-                        gridcolor='rgba(0,0,0,0.1)'
+                        gridcolor='rgba(0,0,0,0.1)',
+                        zeroline=False
                     ),
                     showlegend=True,
                     legend=dict(
@@ -507,10 +647,11 @@ def render_gateway_planning():
                         yanchor="bottom",
                         y=1.02,
                         xanchor="right",
-                        x=1
+                        x=1,
+                        bgcolor='rgba(255,255,255,0.8)'
                     ),
                     margin=dict(l=50, r=50, t=50, b=50),
-                    plot_bgcolor='white'
+                    plot_bgcolor='rgba(240,240,240,0.3)' if not has_floor_plan else 'rgba(255,255,255,0)'
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
