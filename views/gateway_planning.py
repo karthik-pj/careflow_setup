@@ -85,78 +85,145 @@ def render_dxf_floor_plan(fig, floor):
         return False
 
 
+def render_polygon_ring(fig, ring_coords, floor, props, is_building=False):
+    """Render a single polygon ring (exterior or interior)"""
+    if not ring_coords:
+        return
+    
+    xs = []
+    ys = []
+    for c in ring_coords:
+        if len(c) >= 2:
+            lon, lat = c[0], c[1]
+            x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+            xs.append(x)
+            ys.append(y)
+    
+    if not xs:
+        return
+    
+    name = props.get('name', '')
+    geom_type = props.get('geomType', '')
+    
+    if geom_type == 'room':
+        fill_color = 'rgba(46, 92, 191, 0.15)'
+        line_color = '#2e5cbf'
+        line_width = 1
+    elif geom_type == 'building':
+        fill_color = 'rgba(200, 200, 200, 0.1)'
+        line_color = '#444'
+        line_width = 2
+    else:
+        fill_color = 'rgba(150, 150, 150, 0.1)'
+        line_color = '#666'
+        line_width = 1
+    
+    fig.add_trace(go.Scatter(
+        x=xs,
+        y=ys,
+        fill='toself',
+        fillcolor=fill_color,
+        line=dict(color=line_color, width=line_width),
+        name=name if name else geom_type,
+        hovertemplate=f"<b>{name or geom_type}</b><extra></extra>",
+        mode='lines',
+        showlegend=False
+    ))
+    
+    if name and geom_type == 'room':
+        center_x = sum(xs) / len(xs)
+        center_y = sum(ys) / len(ys)
+        fig.add_annotation(
+            x=center_x,
+            y=center_y,
+            text=name[:12],
+            showarrow=False,
+            font=dict(size=8, color='#1a1a1a')
+        )
+
+
 def render_geojson_floor_plan(fig, floor):
-    """Render GeoJSON floor plan as Plotly traces in meter coordinates"""
+    """Render GeoJSON floor plan as Plotly traces in meter coordinates.
+    
+    Handles all geometry types: Point, LineString, Polygon, MultiPolygon, etc.
+    """
     if not floor.floor_plan_geojson or not floor.origin_lat or not floor.origin_lon:
         return False
     
     try:
         geojson_data = json.loads(floor.floor_plan_geojson)
+        rendered_any = False
         
         for feature in geojson_data.get('features', []):
             props = feature.get('properties', {})
             geom = feature.get('geometry', {})
+            geometry_type = geom.get('type', '')
             geom_type = props.get('geomType', '')
             
-            if geom_type == 'room' and geom.get('type') == 'Polygon':
-                coords = geom.get('coordinates', [[]])[0]
-                if coords:
-                    xs = []
-                    ys = []
-                    for c in coords:
-                        lon, lat = c[0], c[1]
-                        x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
-                        xs.append(x)
-                        ys.append(y)
-                    
-                    name = props.get('name', 'Unnamed')
-                    
-                    fig.add_trace(go.Scatter(
-                        x=xs,
-                        y=ys,
-                        fill='toself',
-                        fillcolor='rgba(46, 92, 191, 0.15)',
-                        line=dict(color='#2e5cbf', width=1),
-                        name=name,
-                        hovertemplate=f"<b>{name}</b><extra></extra>",
-                        mode='lines',
-                        showlegend=False
-                    ))
-                    
-                    center_x = sum(xs) / len(xs)
-                    center_y = sum(ys) / len(ys)
-                    fig.add_annotation(
-                        x=center_x,
-                        y=center_y,
-                        text=name[:12],
-                        showarrow=False,
-                        font=dict(size=8, color='#1a1a1a')
-                    )
+            if geometry_type == 'Polygon':
+                rings = geom.get('coordinates', [])
+                if rings:
+                    render_polygon_ring(fig, rings[0], floor, props)
+                    rendered_any = True
             
-            elif geom_type == 'wall' and geom.get('type') == 'LineString':
+            elif geometry_type == 'MultiPolygon':
+                polygons = geom.get('coordinates', [])
+                for polygon in polygons:
+                    if polygon:
+                        render_polygon_ring(fig, polygon[0], floor, props, is_building=True)
+                        rendered_any = True
+            
+            elif geometry_type == 'LineString':
                 coords = geom.get('coordinates', [])
                 if coords:
                     xs = []
                     ys = []
                     for c in coords:
-                        lon, lat = c[0], c[1]
-                        x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
-                        xs.append(x)
-                        ys.append(y)
+                        if len(c) >= 2:
+                            lon, lat = c[0], c[1]
+                            x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                            xs.append(x)
+                            ys.append(y)
                     
-                    wall_type = props.get('subType', 'inner')
-                    line_width = 2 if wall_type == 'outer' else 1
-                    
-                    fig.add_trace(go.Scatter(
-                        x=xs,
-                        y=ys,
-                        mode='lines',
-                        line=dict(color='#333', width=line_width),
-                        showlegend=False,
-                        hoverinfo='skip'
-                    ))
+                    if xs:
+                        wall_type = props.get('subType', 'inner')
+                        line_width = 2 if wall_type == 'outer' or geom_type == 'wall' else 1
+                        
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=ys,
+                            mode='lines',
+                            line=dict(color='#333', width=line_width),
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ))
+                        rendered_any = True
+            
+            elif geometry_type == 'MultiLineString':
+                lines = geom.get('coordinates', [])
+                for line_coords in lines:
+                    if line_coords:
+                        xs = []
+                        ys = []
+                        for c in line_coords:
+                            if len(c) >= 2:
+                                lon, lat = c[0], c[1]
+                                x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                                xs.append(x)
+                                ys.append(y)
+                        
+                        if xs:
+                            fig.add_trace(go.Scatter(
+                                x=xs,
+                                y=ys,
+                                mode='lines',
+                                line=dict(color='#333', width=1),
+                                showlegend=False,
+                                hoverinfo='skip'
+                            ))
+                            rendered_any = True
         
-        return True
+        return rendered_any
     except Exception as e:
         return False
 
@@ -374,32 +441,64 @@ def evaluate_placement_quality(gateways: list, floor_width: float, floor_height:
     }
 
 
-def coords_look_like_latlon(all_coords):
+def coords_look_like_latlon(all_coords, floor=None):
     """Detect if coordinates are lat/lon (degrees) vs meters.
     
-    Lat/lon coordinates typically:
-    - Latitude: -90 to 90
-    - Longitude: -180 to 180
-    
-    Meter coordinates for floor plans are typically:
-    - 0 to a few hundred meters
+    Decision logic:
+    1. If floor_plan_type is 'dxf', coordinates are in meters
+    2. If floor has origin_lat/origin_lon AND floor_plan_type is 'geojson', likely lat/lon
+    3. Otherwise, check coordinate ranges (lat/lon has much smaller range than meters)
     """
     if not all_coords:
         return False
     
-    xs = [c[0] for c in all_coords]
-    ys = [c[1] for c in all_coords]
+    if floor:
+        if floor.floor_plan_type == 'dxf':
+            return False
+        if floor.floor_plan_type == 'geojson' and floor.origin_lat and floor.origin_lon:
+            return True
+    
+    xs = [c[0] for c in all_coords if len(c) >= 2]
+    ys = [c[1] for c in all_coords if len(c) >= 2]
+    
+    if not xs or not ys:
+        return False
     
     x_range = max(xs) - min(xs)
     y_range = max(ys) - min(ys)
     
-    if x_range < 0.01 and y_range < 0.01:
+    if x_range < 1 and y_range < 1:
         all_x_in_lon_range = all(-180 <= x <= 180 for x in xs)
         all_y_in_lat_range = all(-90 <= y <= 90 for y in ys)
         if all_x_in_lon_range and all_y_in_lat_range:
             return True
     
     return False
+
+
+def extract_coords_from_geometry(geom):
+    """Extract all coordinates from a GeoJSON geometry, handling all types."""
+    coords = []
+    geom_type = geom.get('type', '')
+    
+    if geom_type == 'Point':
+        coords.append(geom.get('coordinates', []))
+    elif geom_type == 'LineString':
+        coords.extend(geom.get('coordinates', []))
+    elif geom_type == 'Polygon':
+        for ring in geom.get('coordinates', []):
+            coords.extend(ring)
+    elif geom_type == 'MultiPoint':
+        coords.extend(geom.get('coordinates', []))
+    elif geom_type == 'MultiLineString':
+        for line in geom.get('coordinates', []):
+            coords.extend(line)
+    elif geom_type == 'MultiPolygon':
+        for polygon in geom.get('coordinates', []):
+            for ring in polygon:
+                coords.extend(ring)
+    
+    return coords
 
 
 def extract_building_bounds(floor):
@@ -409,6 +508,7 @@ def extract_building_bounds(floor):
     - DXF plans: coordinates already in meters
     - GeoJSON lat/lon: converted to meters using floor origin (detected by small ranges)
     - GeoJSON meters: used directly (detected by large ranges)
+    - All geometry types: Point, LineString, Polygon, MultiPolygon, etc.
     """
     min_x, max_x, min_y, max_y = None, None, None, None
     
@@ -419,29 +519,25 @@ def extract_building_bounds(floor):
             
             for feature in geojson_data.get('features', []):
                 geom = feature.get('geometry', {})
-                
-                if geom.get('type') == 'Polygon':
-                    coords = geom.get('coordinates', [[]])[0]
-                    all_coords.extend(coords)
-                elif geom.get('type') == 'LineString':
-                    coords = geom.get('coordinates', [])
-                    all_coords.extend(coords)
+                feature_coords = extract_coords_from_geometry(geom)
+                all_coords.extend(feature_coords)
             
             if all_coords:
-                is_latlon = coords_look_like_latlon(all_coords)
+                is_latlon = coords_look_like_latlon(all_coords, floor)
                 has_origin = floor.origin_lat is not None and floor.origin_lon is not None
                 
                 if is_latlon and has_origin:
                     xs = []
                     ys = []
                     for c in all_coords:
-                        lon, lat = c[0], c[1]
-                        x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
-                        xs.append(x)
-                        ys.append(y)
+                        if len(c) >= 2:
+                            lon, lat = c[0], c[1]
+                            x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                            xs.append(x)
+                            ys.append(y)
                 else:
-                    xs = [c[0] for c in all_coords]
-                    ys = [c[1] for c in all_coords]
+                    xs = [c[0] for c in all_coords if len(c) >= 2]
+                    ys = [c[1] for c in all_coords if len(c) >= 2]
                 
                 if xs and ys:
                     min_x, max_x = min(xs), max(xs)
