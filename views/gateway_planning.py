@@ -201,33 +201,64 @@ def create_floor_plan_figure(floor):
     return fig, has_floor_plan
 
 
-def calculate_recommended_gateways(floor_area: float, target_accuracy: float, signal_range: float = 15.0) -> dict:
-    """Calculate recommended number of gateways based on floor area and target accuracy"""
-    if target_accuracy <= 0.5:
-        coverage_per_gateway = min(signal_range * 0.6, 8) ** 2 * np.pi * 0.3
-        min_gateways = 4
-        geometry_note = "Requires 4+ gateways in surrounding geometry with calibration"
-    elif target_accuracy <= 1.0:
-        coverage_per_gateway = min(signal_range * 0.7, 10) ** 2 * np.pi * 0.4
-        min_gateways = 3
-        geometry_note = "Requires 3+ gateways with good triangulation geometry"
-    elif target_accuracy <= 2.0:
-        coverage_per_gateway = min(signal_range * 0.8, 12) ** 2 * np.pi * 0.5
-        min_gateways = 3
-        geometry_note = "3+ gateways recommended for reliable 2D positioning"
-    else:
-        coverage_per_gateway = signal_range ** 2 * np.pi * 0.6
-        min_gateways = 2
-        geometry_note = "2+ gateways provide basic coverage"
+def calculate_recommended_gateways(floor_area: float, target_accuracy: float, signal_range: float = 15.0, floor=None) -> dict:
+    """Calculate recommended number of gateways based on floor area and target accuracy.
     
-    gateways_for_coverage = max(min_gateways, int(np.ceil(floor_area / coverage_per_gateway)))
+    Optimizes for minimum gateways while ensuring overlapping coverage for triangulation.
+    For perimeter placement, gateways only need to cover inward, reducing the count needed.
+    """
+    if floor:
+        bounds = extract_building_bounds(floor)
+        actual_area = bounds['width'] * bounds['height']
+        actual_width = bounds['width']
+        actual_height = bounds['height']
+    else:
+        actual_area = floor_area
+        actual_width = np.sqrt(floor_area)
+        actual_height = np.sqrt(floor_area)
+    
+    effective_range = signal_range * 0.8
+    
+    if target_accuracy <= 0.5:
+        min_gateways = 4
+        overlap_factor = 0.5
+        geometry_note = "4 gateways in corners provide surrounding geometry for sub-meter accuracy"
+    elif target_accuracy <= 1.0:
+        min_gateways = 3
+        overlap_factor = 0.6
+        geometry_note = "3 gateways in triangle formation for meter-level accuracy"
+    elif target_accuracy <= 2.0:
+        min_gateways = 3
+        overlap_factor = 0.7
+        geometry_note = "3 gateways for reliable 2D positioning"
+    else:
+        min_gateways = 2
+        overlap_factor = 0.8
+        geometry_note = "2 gateways for basic zone-level coverage"
+    
+    coverage_diameter = effective_range * 2 * overlap_factor
+    
+    gw_along_width = max(2, int(np.ceil(actual_width / coverage_diameter)))
+    gw_along_height = max(2, int(np.ceil(actual_height / coverage_diameter)))
+    
+    if actual_width <= coverage_diameter * 1.5 and actual_height <= coverage_diameter * 1.5:
+        gateways_for_coverage = min_gateways
+    elif actual_width <= coverage_diameter * 2 and actual_height <= coverage_diameter * 2:
+        gateways_for_coverage = max(min_gateways, 4)
+    else:
+        perimeter_gateways = 2 * (gw_along_width + gw_along_height) - 4
+        gateways_for_coverage = max(min_gateways, perimeter_gateways)
+    
+    if gateways_for_coverage > 12:
+        geometry_note = f"{gateways_for_coverage} gateways needed for full coverage - consider zone-based approach"
     
     return {
         "recommended": gateways_for_coverage,
         "minimum": min_gateways,
-        "coverage_radius": signal_range * (0.6 if target_accuracy <= 0.5 else 0.8),
+        "coverage_radius": effective_range,
         "geometry_note": geometry_note,
-        "achievable": target_accuracy >= 0.5
+        "achievable": target_accuracy >= 0.5,
+        "actual_building_area": actual_area
     }
 
 
@@ -343,57 +374,170 @@ def evaluate_placement_quality(gateways: list, floor_width: float, floor_height:
     }
 
 
-def suggest_gateway_positions(floor_width: float, floor_height: float, num_gateways: int, margin: float = 2.0) -> list:
-    """Suggest optimal gateway positions for a rectangular floor"""
+def coords_look_like_latlon(all_coords):
+    """Detect if coordinates are lat/lon (degrees) vs meters.
+    
+    Lat/lon coordinates typically:
+    - Latitude: -90 to 90
+    - Longitude: -180 to 180
+    
+    Meter coordinates for floor plans are typically:
+    - 0 to a few hundred meters
+    """
+    if not all_coords:
+        return False
+    
+    xs = [c[0] for c in all_coords]
+    ys = [c[1] for c in all_coords]
+    
+    x_range = max(xs) - min(xs)
+    y_range = max(ys) - min(ys)
+    
+    if x_range < 0.01 and y_range < 0.01:
+        all_x_in_lon_range = all(-180 <= x <= 180 for x in xs)
+        all_y_in_lat_range = all(-90 <= y <= 90 for y in ys)
+        if all_x_in_lon_range and all_y_in_lat_range:
+            return True
+    
+    return False
+
+
+def extract_building_bounds(floor):
+    """Extract actual building boundaries from floor plan geometry.
+    
+    Handles:
+    - DXF plans: coordinates already in meters
+    - GeoJSON lat/lon: converted to meters using floor origin (detected by small ranges)
+    - GeoJSON meters: used directly (detected by large ranges)
+    """
+    min_x, max_x, min_y, max_y = None, None, None, None
+    
+    if floor.floor_plan_geojson:
+        try:
+            geojson_data = json.loads(floor.floor_plan_geojson)
+            all_coords = []
+            
+            for feature in geojson_data.get('features', []):
+                geom = feature.get('geometry', {})
+                
+                if geom.get('type') == 'Polygon':
+                    coords = geom.get('coordinates', [[]])[0]
+                    all_coords.extend(coords)
+                elif geom.get('type') == 'LineString':
+                    coords = geom.get('coordinates', [])
+                    all_coords.extend(coords)
+            
+            if all_coords:
+                is_latlon = coords_look_like_latlon(all_coords)
+                has_origin = floor.origin_lat is not None and floor.origin_lon is not None
+                
+                if is_latlon and has_origin:
+                    xs = []
+                    ys = []
+                    for c in all_coords:
+                        lon, lat = c[0], c[1]
+                        x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                        xs.append(x)
+                        ys.append(y)
+                else:
+                    xs = [c[0] for c in all_coords]
+                    ys = [c[1] for c in all_coords]
+                
+                if xs and ys:
+                    min_x, max_x = min(xs), max(xs)
+                    min_y, max_y = min(ys), max(ys)
+        except Exception:
+            pass
+    
+    width = (max_x - min_x) if min_x is not None else 0
+    height = (max_y - min_y) if min_y is not None else 0
+    
+    if min_x is None or width < 5 or height < 5:
+        min_x, max_x = 0, floor.width_meters
+        min_y, max_y = 0, floor.height_meters
+    
+    return {
+        'min_x': min_x, 'max_x': max_x,
+        'min_y': min_y, 'max_y': max_y,
+        'width': max_x - min_x,
+        'height': max_y - min_y,
+        'center_x': (min_x + max_x) / 2,
+        'center_y': (min_y + max_y) / 2
+    }
+
+
+def suggest_gateway_positions(floor_width: float, floor_height: float, num_gateways: int, 
+                              signal_range: float = 15.0, floor=None) -> list:
+    """Suggest optimal gateway positions inside the actual building footprint.
+    
+    Places gateways along the building perimeter (near walls) with positions
+    optimized for triangulation coverage while minimizing the number of gateways.
+    """
     suggestions = []
     
-    fw = float(floor_width)
-    fh = float(floor_height)
-    m = float(margin)
+    if floor:
+        bounds = extract_building_bounds(floor)
+        bx_min, bx_max = bounds['min_x'], bounds['max_x']
+        by_min, by_max = bounds['min_y'], bounds['max_y']
+        bw = bounds['width']
+        bh = bounds['height']
+        cx, cy = bounds['center_x'], bounds['center_y']
+    else:
+        bx_min, by_min = 0, 0
+        bx_max, bw = float(floor_width), float(floor_width)
+        by_max, bh = float(floor_height), float(floor_height)
+        cx, cy = bw / 2, bh / 2
     
-    if num_gateways == 3:
+    wall_offset = 1.5
+    
+    if num_gateways <= 2:
         suggestions = [
-            {"x": m, "y": m, "name": "GW-1 (Corner SW)"},
-            {"x": fw - m, "y": m, "name": "GW-2 (Corner SE)"},
-            {"x": fw / 2, "y": fh - m, "name": "GW-3 (Center N)"},
+            {"x": round(bx_min + wall_offset, 2), "y": round(cy, 2), "name": "GW-1 (West Wall)"},
+            {"x": round(bx_max - wall_offset, 2), "y": round(cy, 2), "name": "GW-2 (East Wall)"},
+        ]
+    elif num_gateways == 3:
+        suggestions = [
+            {"x": round(bx_min + wall_offset, 2), "y": round(by_min + bh * 0.3, 2), "name": "GW-1 (West)"},
+            {"x": round(bx_max - wall_offset, 2), "y": round(by_min + bh * 0.3, 2), "name": "GW-2 (East)"},
+            {"x": round(cx, 2), "y": round(by_max - wall_offset, 2), "name": "GW-3 (North)"},
         ]
     elif num_gateways == 4:
         suggestions = [
-            {"x": m, "y": m, "name": "GW-1 (Corner SW)"},
-            {"x": fw - m, "y": m, "name": "GW-2 (Corner SE)"},
-            {"x": fw - m, "y": fh - m, "name": "GW-3 (Corner NE)"},
-            {"x": m, "y": fh - m, "name": "GW-4 (Corner NW)"},
+            {"x": round(bx_min + wall_offset, 2), "y": round(by_min + wall_offset, 2), "name": "GW-1 (SW Corner)"},
+            {"x": round(bx_max - wall_offset, 2), "y": round(by_min + wall_offset, 2), "name": "GW-2 (SE Corner)"},
+            {"x": round(bx_max - wall_offset, 2), "y": round(by_max - wall_offset, 2), "name": "GW-3 (NE Corner)"},
+            {"x": round(bx_min + wall_offset, 2), "y": round(by_max - wall_offset, 2), "name": "GW-4 (NW Corner)"},
         ]
-    elif num_gateways == 5:
-        suggestions = [
-            {"x": m, "y": m, "name": "GW-1 (Corner SW)"},
-            {"x": fw - m, "y": m, "name": "GW-2 (Corner SE)"},
-            {"x": fw - m, "y": fh - m, "name": "GW-3 (Corner NE)"},
-            {"x": m, "y": fh - m, "name": "GW-4 (Corner NW)"},
-            {"x": fw / 2, "y": fh / 2, "name": "GW-5 (Center)"},
-        ]
-    elif num_gateways >= 6:
-        suggestions = [
-            {"x": m, "y": m, "name": "GW-1 (Corner SW)"},
-            {"x": fw - m, "y": m, "name": "GW-2 (Corner SE)"},
-            {"x": fw - m, "y": fh - m, "name": "GW-3 (Corner NE)"},
-            {"x": m, "y": fh - m, "name": "GW-4 (Corner NW)"},
-            {"x": fw / 2, "y": m, "name": "GW-5 (Mid S)"},
-            {"x": fw / 2, "y": fh - m, "name": "GW-6 (Mid N)"},
-        ]
-        for i in range(6, num_gateways):
-            angle = (i - 6) * 2 * np.pi / max(1, (num_gateways - 6))
-            radius = min(fw, fh) * 0.3
-            x = float(fw / 2 + radius * np.cos(angle))
-            y = float(fh / 2 + radius * np.sin(angle))
-            suggestions.append({"x": round(x, 2), "y": round(y, 2), "name": f"GW-{i+1}"})
     else:
-        for i in range(num_gateways):
-            angle = i * 2 * np.pi / max(1, num_gateways)
-            radius = min(fw, fh) * 0.35
-            x = float(fw / 2 + radius * np.cos(angle))
-            y = float(fh / 2 + radius * np.sin(angle))
-            suggestions.append({"x": round(x, 2), "y": round(y, 2), "name": f"GW-{i+1}"})
+        perimeter = 2 * (bw + bh)
+        spacing = perimeter / num_gateways
+        
+        current_dist = spacing / 2
+        gw_num = 1
+        
+        sides = [
+            ('S', bx_min, by_min + wall_offset, bx_max, by_min + wall_offset, bw),
+            ('E', bx_max - wall_offset, by_min, bx_max - wall_offset, by_max, bh),
+            ('N', bx_max, by_max - wall_offset, bx_min, by_max - wall_offset, bw),
+            ('W', bx_min + wall_offset, by_max, bx_min + wall_offset, by_min, bh),
+        ]
+        
+        cumulative = 0
+        for side_name, x1, y1, x2, y2, length in sides:
+            while current_dist < cumulative + length and gw_num <= num_gateways:
+                t = (current_dist - cumulative) / length
+                x = x1 + t * (x2 - x1)
+                y = y1 + t * (y2 - y1)
+                
+                suggestions.append({
+                    "x": round(float(x), 2),
+                    "y": round(float(y), 2),
+                    "name": f"GW-{gw_num} ({side_name} Wall)"
+                })
+                gw_num += 1
+                current_dist += spacing
+            
+            cumulative += length
     
     return suggestions
 
@@ -466,7 +610,7 @@ def render_gateway_planning():
             )
             
             floor_area = selected_floor.width_meters * selected_floor.height_meters
-            recommendations = calculate_recommended_gateways(floor_area, target_accuracy, signal_range)
+            recommendations = calculate_recommended_gateways(floor_area, target_accuracy, signal_range, floor=selected_floor)
             
             st.divider()
             st.markdown("**Recommendations**")
@@ -526,7 +670,7 @@ def render_gateway_planning():
                 effective_signal_range = current_plan.signal_range if current_plan and current_plan.signal_range else signal_range
                 
                 floor_area = selected_floor.width_meters * selected_floor.height_meters
-                effective_recommendations = calculate_recommended_gateways(floor_area, effective_target_accuracy, effective_signal_range)
+                effective_recommendations = calculate_recommended_gateways(floor_area, effective_target_accuracy, effective_signal_range, floor=selected_floor)
                 
                 floor_width = selected_floor.width_meters
                 floor_height = selected_floor.height_meters
@@ -712,7 +856,10 @@ def render_gateway_planning():
                     st.success(f"Added {new_gw_name}")
                     st.rerun()
             
-            suggestions = suggest_gateway_positions(floor_width, floor_height, effective_recommendations["recommended"])
+            suggestions = suggest_gateway_positions(
+                floor_width, floor_height, effective_recommendations["recommended"],
+                signal_range=effective_signal_range, floor=selected_floor
+            )
             if st.button(f"Auto-suggest {effective_recommendations['recommended']} gateway positions"):
                 existing_gws = session.query(PlannedGateway).filter(
                     PlannedGateway.plan_id == current_plan.id
