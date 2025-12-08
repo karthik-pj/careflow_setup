@@ -358,6 +358,7 @@ page = st.sidebar.radio(
     [
         "Dashboard",
         "Buildings & Floor Plans",
+        "Gateway Planning",
         "Gateways",
         "Beacons",
         "MQTT Configuration",
@@ -400,6 +401,9 @@ if page == "Dashboard":
 elif page == "Buildings & Floor Plans":
     from views import buildings
     buildings.render()
+elif page == "Gateway Planning":
+    from views import gateway_planning
+    gateway_planning.render_gateway_planning()
 elif page == "Gateways":
     from views import gateways
     gateways.render()

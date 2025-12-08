@@ -222,6 +222,31 @@ Each gateway can have custom calibration values:
   - Block references are expanded with proper transformation matrices
   - Users should export DWG to DXF before upload
 
+## Gateway Planning Feature
+Plan optimal gateway placement before physical installation:
+
+### Features
+- **Target Accuracy Selection**: Choose desired accuracy (±0.5m to ±5m)
+- **Gateway Recommendations**: Calculate recommended number of gateways based on floor area and accuracy
+- **Auto-suggest Positions**: Automatically generate optimal gateway positions with surrounding geometry
+- **Coverage Visualization**: See signal range circles overlaid on floor plans
+- **Placement Quality Score**: Evaluate placement with metrics for coverage percentage and overall score
+- **Export Options**: Download installation guide (Markdown) or configuration (JSON) for field installers
+
+### Workflow
+1. Select building and floor
+2. Choose target accuracy level
+3. Adjust expected signal range
+4. Create a new plan or select existing
+5. Auto-suggest gateway positions or add manually
+6. Review placement quality score and coverage
+7. Export installation guide for field deployment
+8. After physical installation, convert planned positions to active gateways
+
+### Database Tables
+- **gateway_plans**: Plan metadata (floor, target accuracy, signal range)
+- **planned_gateways**: Individual gateway positions within a plan
+
 ## Recent Changes
 - December 2025: Initial implementation with full feature set
 - December 2025: Fixed database session management with context managers
@@ -235,3 +260,4 @@ Each gateway can have custom calibration values:
 - December 2025: Added DXF floor plan support using ezdxf library for CAD file parsing
 - December 2025: Fixed phantom beacon movement with 0.3m stability threshold
 - December 2025: Improved Live Tracking UX - auto-refresh OFF by default to preserve zoom/pan state
+- December 2025: Added Gateway Planning feature for infrastructure planning before physical installation

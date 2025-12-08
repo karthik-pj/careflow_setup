@@ -231,6 +231,42 @@ class CalibrationPoint(Base):
     floor = relationship("Floor", back_populates="calibration_points")
 
 
+class GatewayPlan(Base):
+    """Gateway placement plan for infrastructure planning before installation"""
+    __tablename__ = 'gateway_plans'
+    
+    id = Column(Integer, primary_key=True)
+    floor_id = Column(Integer, ForeignKey('floors.id'), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    target_accuracy = Column(Float, default=1.0)
+    signal_range = Column(Float, default=15.0)
+    path_loss_exponent = Column(Float, default=2.5)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    floor = relationship("Floor")
+    planned_gateways = relationship("PlannedGateway", back_populates="plan", cascade="all, delete-orphan")
+
+
+class PlannedGateway(Base):
+    """Individual gateway position within a plan"""
+    __tablename__ = 'planned_gateways'
+    
+    id = Column(Integer, primary_key=True)
+    plan_id = Column(Integer, ForeignKey('gateway_plans.id'), nullable=False)
+    name = Column(String(255), nullable=False)
+    x_position = Column(Float, nullable=False)
+    y_position = Column(Float, nullable=False)
+    notes = Column(Text)
+    is_installed = Column(Boolean, default=False)
+    installed_gateway_id = Column(Integer, ForeignKey('gateways.id'))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    plan = relationship("GatewayPlan", back_populates="planned_gateways")
+    installed_gateway = relationship("Gateway")
+
+
 def get_engine():
     """Create database engine from environment variables (singleton)"""
     global _engine
