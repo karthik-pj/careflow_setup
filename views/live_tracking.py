@@ -427,6 +427,8 @@ def render():
                 refresh_interval = st.slider("Refresh (sec)", 2, 10, 3)
             
             processor = get_signal_processor()
+            processor.check_and_restart()
+            
             if processor.is_running:
                 st.success("Processor: Running")
             else:

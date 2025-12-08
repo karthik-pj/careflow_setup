@@ -320,24 +320,18 @@ try:
 except Exception as e:
     st.error(f"Database initialization error: {e}")
 
-if 'processor_init_attempted' not in st.session_state:
-    st.session_state['processor_init_attempted'] = False
-
-if not st.session_state['processor_init_attempted']:
-    try:
-        from utils.signal_processor import get_signal_processor
-        from database import get_db_session, MQTTConfig
-        
-        with get_db_session() as session:
-            mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
-            if mqtt_config:
-                processor = get_signal_processor()
-                if not processor.is_running:
-                    processor.start()
-        
-        st.session_state['processor_init_attempted'] = True
-    except Exception:
-        st.session_state['processor_init_attempted'] = True
+try:
+    from utils.signal_processor import get_signal_processor
+    from database import get_db_session, MQTTConfig
+    
+    with get_db_session() as session:
+        mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
+        if mqtt_config:
+            processor = get_signal_processor()
+            if not processor.is_running:
+                processor.start()
+except Exception:
+    pass
 
 logo_path = Path("attached_assets/CAREFLOW LOGO-Color_1764612034940.png")
 if logo_path.exists():
@@ -383,9 +377,17 @@ st.sidebar.markdown("---")
 
 try:
     from utils.signal_processor import get_signal_processor
+    from datetime import datetime, timedelta
     processor = get_signal_processor()
+    processor.check_and_restart()
     if processor.is_running:
-        st.sidebar.success("Signal Processor: Running")
+        heartbeat = processor.last_heartbeat
+        if heartbeat and (datetime.utcnow() - heartbeat).total_seconds() < 10:
+            st.sidebar.success("Signal Processor: Running")
+        elif heartbeat:
+            st.sidebar.warning(f"Signal Processor: Stale ({int((datetime.utcnow() - heartbeat).total_seconds())}s)")
+        else:
+            st.sidebar.success("Signal Processor: Running")
     else:
         st.sidebar.warning("Signal Processor: Stopped")
 except Exception:

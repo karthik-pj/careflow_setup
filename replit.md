@@ -150,7 +150,11 @@ The system supports configurable position calculation settings in MQTT Configura
 
 ## Technical Notes
 - Database sessions use context managers to prevent connection leaks
-- Signal processor runs in background thread for continuous data ingestion
+- **Signal Processor Architecture** (Streamlit-compatible):
+  - Uses Paho MQTT's internal thread for signal storage via callback (persistent across Streamlit reruns)
+  - Dedicated scheduler thread for continuous position calculation
+  - Singleton pattern with @st.cache_resource decorator
+  - Heartbeat monitoring and auto-restart mechanism
 - Triangulation uses weighted least squares for position calculation
 - Path loss model: RSSI to distance conversion with configurable calibration
 - Movement vectors calculated from sequential position updates
@@ -180,3 +184,4 @@ The system supports configurable position calculation settings in MQTT Configura
 - December 2025: Added Phase 2 features (history playback, zones/alerts, analytics, import/export, calibration)
 - December 2025: Updated branding from Moko to Careflow with logo and color scheme
 - December 2025: Added MQTT publishing for beacon positions and zone alerts with async queue architecture
+- December 2025: Fixed signal processor architecture - replaced thread-based with callback + scheduler for Streamlit compatibility

@@ -1,6 +1,7 @@
 import threading
 import time
 import os
+import atexit
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 import streamlit as st
@@ -12,7 +13,11 @@ from utils.mqtt_publisher import get_mqtt_publisher
 
 
 class SignalProcessor:
-    """Background processor for MQTT signals and position calculation"""
+    """Signal processor that stores signals via MQTT callback and calculates positions on demand.
+    
+    Key architecture: Uses Paho MQTT's internal thread for signal storage (persistent),
+    while position calculation is triggered by Streamlit page loads (on-demand).
+    """
     
     _instance = None
     _lock = threading.Lock()
@@ -31,7 +36,6 @@ class SignalProcessor:
         self._initialized = True
         self._mqtt_handler: Optional[MQTTHandler] = None
         self._running = False
-        self._thread: Optional[threading.Thread] = None
         self._last_error: Optional[str] = None
         self._stats = {
             'signals_received': 0,
@@ -46,10 +50,47 @@ class SignalProcessor:
         self._rssi_smoothing_enabled = True
         self._position_smoothing_alpha = 0.4
         self._position_history: Dict[int, List[Tuple[float, float]]] = {}
+        self._last_heartbeat: Optional[datetime] = None
+        self._last_position_calc: Optional[datetime] = None
+        self._signal_lock = threading.Lock()
+        self._scheduler_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._calc_lock = threading.Lock()
+        atexit.register(self._cleanup)
     
     @property
     def is_running(self) -> bool:
-        return self._running and self._thread and self._thread.is_alive()
+        """Check if processor is running (MQTT handler connected and scheduler active)"""
+        mqtt_ok = self._running and self._mqtt_handler and self._mqtt_handler.is_connected
+        scheduler_ok = self._scheduler_thread and self._scheduler_thread.is_alive()
+        return mqtt_ok and scheduler_ok
+    
+    @property
+    def last_heartbeat(self) -> Optional[datetime]:
+        return self._last_heartbeat
+    
+    def _cleanup(self):
+        """Cleanup handler for atexit"""
+        if self._running:
+            self.stop()
+    
+    def check_and_restart(self) -> bool:
+        """Check if the processor should be running but isn't, and restart if needed.
+        Returns True if processor is now running, False if restart failed.
+        """
+        needs_restart = False
+        
+        if self._running:
+            if self._mqtt_handler and not self._mqtt_handler.is_connected:
+                needs_restart = True
+            if not self._scheduler_thread or not self._scheduler_thread.is_alive():
+                needs_restart = True
+        
+        if needs_restart:
+            self.stop()
+            return self.start()
+        
+        return self.is_running
     
     @property
     def stats(self) -> Dict[str, int]:
@@ -66,7 +107,11 @@ class SignalProcessor:
         return None
     
     def start(self) -> bool:
-        """Start the signal processor with MQTT connection"""
+        """Start the signal processor with MQTT connection.
+        
+        Uses Paho's internal thread for signal storage (via callback),
+        which persists across Streamlit reruns.
+        """
         if self.is_running:
             return True
         
@@ -92,6 +137,8 @@ class SignalProcessor:
                     ca_cert_path=ca_cert_path
                 )
             
+            self._mqtt_handler.add_callback(self._on_mqtt_message)
+            
             if not self._mqtt_handler.connect():
                 self._last_error = self._mqtt_handler.last_error or "Failed to connect to MQTT broker"
                 return False
@@ -108,53 +155,83 @@ class SignalProcessor:
                     self._position_smoothing_alpha = getattr(mqtt_config, 'position_smoothing_alpha', 0.4) or 0.4
             
             self._running = True
+            self._last_heartbeat = datetime.utcnow()
+            self._stop_event.clear()
             
-            self._thread = threading.Thread(target=self._process_loop, daemon=True)
-            self._thread.start()
+            self._scheduler_thread = threading.Thread(
+                target=self._scheduler_loop, 
+                daemon=False, 
+                name="SignalProcessorScheduler"
+            )
+            self._scheduler_thread.start()
             
+            print("[SignalProcessor] Started with callback-based signal storage and position scheduler")
             self._last_error = None
             return True
             
         except Exception as e:
             self._last_error = str(e)
+            print(f"[SignalProcessor] Start error: {e}")
             return False
     
     def stop(self):
         """Stop the signal processor"""
         self._running = False
+        self._stop_event.set()
+        
+        if self._scheduler_thread and self._scheduler_thread.is_alive():
+            self._scheduler_thread.join(timeout=5)
+            self._scheduler_thread = None
         
         if self._mqtt_handler:
             self._mqtt_handler.stop()
             self._mqtt_handler.disconnect()
             self._mqtt_handler = None
-        
-        if self._thread:
-            self._thread.join(timeout=5)
-            self._thread = None
     
-    def _process_loop(self):
-        """Main processing loop running in background thread"""
-        last_position_calc = datetime.utcnow()
+    def _on_mqtt_message(self, msg: MQTTMessage):
+        """Callback for MQTT messages - runs in Paho's thread.
         
-        while self._running:
+        This is the key to persistence: Paho's internal thread survives
+        Streamlit reruns, so signals are stored continuously.
+        """
+        with self._signal_lock:
             try:
-                if self._mqtt_handler:
-                    messages = self._mqtt_handler.get_messages(max_count=100)
-                    
-                    for msg in messages:
-                        self._stats['signals_received'] += 1
-                        self._store_signal(msg)
+                self._stats['signals_received'] += 1
+                self._store_signal(msg)
+                self._last_heartbeat = datetime.utcnow()
+            except Exception as e:
+                self._stats['errors'] += 1
+                self._last_error = str(e)
+    
+    def _scheduler_loop(self):
+        """Scheduler loop for position calculation - runs in dedicated thread.
+        
+        This thread calculates positions at fixed intervals independent of the UI.
+        Uses Event.wait() for graceful shutdown.
+        """
+        print("[SignalProcessor] Scheduler thread started")
+        last_heartbeat_log = datetime.utcnow()
+        
+        while self._running and not self._stop_event.is_set():
+            try:
+                if (datetime.utcnow() - last_heartbeat_log).total_seconds() >= 30:
+                    stats = self._stats
+                    print(f"[SignalProcessor] Heartbeat - Signals: {stats['signals_received']}, Stored: {stats['signals_stored']}, Positions: {stats['positions_calculated']}, Errors: {stats['errors']}")
+                    last_heartbeat_log = datetime.utcnow()
                 
-                if (datetime.utcnow() - last_position_calc).total_seconds() >= self._refresh_interval:
+                with self._calc_lock:
                     self._calculate_positions()
-                    last_position_calc = datetime.utcnow()
+                    self._last_position_calc = datetime.utcnow()
                 
-                time.sleep(0.05)
+                self._stop_event.wait(timeout=self._refresh_interval)
                 
             except Exception as e:
-                self._last_error = str(e)
+                self._last_error = f"Scheduler error: {e}"
                 self._stats['errors'] += 1
-                time.sleep(0.5)
+                print(f"[SignalProcessor] Scheduler error: {e}")
+                self._stop_event.wait(timeout=1.0)
+        
+        print("[SignalProcessor] Scheduler thread stopped")
     
     def _store_signal(self, msg: MQTTMessage):
         """Store an RSSI signal in the database"""
@@ -355,6 +432,9 @@ class SignalProcessor:
             self._stats['errors'] += 1
 
 
+@st.cache_resource
 def get_signal_processor() -> SignalProcessor:
-    """Get the singleton signal processor instance"""
+    """Get the singleton signal processor instance.
+    Using st.cache_resource keeps the processor alive across Streamlit reruns.
+    """
     return SignalProcessor()
