@@ -375,14 +375,28 @@ class SignalProcessor:
                         
                         velocity_x, velocity_y, speed, heading = 0, 0, 0, 0
                         
+                        STABILITY_THRESHOLD = 0.3
+                        
                         if previous_position:
-                            time_delta = (datetime.utcnow() - previous_position.timestamp).total_seconds()
-                            if 0 < time_delta < 60:
-                                velocity_x, velocity_y, speed, heading = calculate_velocity(
-                                    (x, y),
-                                    (previous_position.x_position, previous_position.y_position),
-                                    time_delta
-                                )
+                            dx = x - previous_position.x_position
+                            dy = y - previous_position.y_position
+                            distance_moved = (dx**2 + dy**2) ** 0.5
+                            
+                            if distance_moved < STABILITY_THRESHOLD:
+                                x = previous_position.x_position
+                                y = previous_position.y_position
+                                velocity_x = 0
+                                velocity_y = 0
+                                speed = 0
+                                heading = previous_position.heading or 0
+                            else:
+                                time_delta = (datetime.utcnow() - previous_position.timestamp).total_seconds()
+                                if 0 < time_delta < 60:
+                                    velocity_x, velocity_y, speed, heading = calculate_velocity(
+                                        (x, y),
+                                        (previous_position.x_position, previous_position.y_position),
+                                        time_delta
+                                    )
                         
                         position = Position(
                             beacon_id=beacon_id,

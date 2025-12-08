@@ -147,6 +147,7 @@ The system supports configurable position calculation settings in MQTT Configura
   - Shorter window = more responsive but may miss intermittent signals
 - **RSSI Smoothing**: Weighted average of multiple readings from same gateway
 - **Position Smoothing**: Exponential smoothing to reduce jitter (alpha 0.1-1.0)
+- **Stability Threshold**: Positions only update when movement exceeds 0.3 meters (prevents phantom drift from RSSI noise)
 
 ## Technical Notes
 - Database sessions use context managers to prevent connection leaks

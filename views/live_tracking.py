@@ -221,7 +221,8 @@ def create_floor_plan_base(floor):
         legend=dict(x=1.02, y=1, bgcolor='rgba(255,255,255,0.8)'),
         margin=dict(l=50, r=150, t=50, b=50),
         height=600,
-        plot_bgcolor='rgba(240,240,240,0.3)' if not has_floor_plan else 'rgba(255,255,255,0)'
+        plot_bgcolor='rgba(240,240,240,0.3)' if not has_floor_plan else 'rgba(255,255,255,0)',
+        uirevision='floor_plan_view'
     )
     
     return fig, has_floor_plan
