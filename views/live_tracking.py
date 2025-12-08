@@ -203,26 +203,28 @@ def create_floor_plan_base(floor):
     
     fig.update_layout(
         xaxis=dict(
-            range=[0, floor.width_meters],
             title="X (meters)",
             showgrid=not has_floor_plan,
             zeroline=False,
-            constrain='domain'
+            constrain='domain',
+            autorange=False,
+            range=[0, floor.width_meters]
         ),
         yaxis=dict(
-            range=[0, floor.height_meters],
             title="Y (meters)",
             showgrid=not has_floor_plan,
             zeroline=False,
             scaleanchor="x",
-            scaleratio=1
+            scaleratio=1,
+            autorange=False,
+            range=[0, floor.height_meters]
         ),
         showlegend=True,
         legend=dict(x=1.02, y=1, bgcolor='rgba(255,255,255,0.8)'),
         margin=dict(l=50, r=150, t=50, b=50),
         height=600,
         plot_bgcolor='rgba(240,240,240,0.3)' if not has_floor_plan else 'rgba(255,255,255,0)',
-        uirevision='floor_plan_view'
+        uirevision='constant'
     )
     
     return fig, has_floor_plan
@@ -383,7 +385,7 @@ def create_heatmap_figure(floor, positions_data, gateways_data):
 
 
 def render_chart_fragment():
-    """Fragment for chart rendering - auto-refreshes without losing zoom state"""
+    """Fragment for chart rendering - uses session state for data refresh"""
     if 'chart_params' not in st.session_state:
         return
     
@@ -455,7 +457,7 @@ def render_chart_fragment():
         else:
             fig = create_heatmap_figure(floor, positions_data, gateways_data)
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="floor_plan_chart")
         
         col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
         
@@ -611,25 +613,31 @@ def render():
             st.caption(f"{len(selected_beacon_ids)} beacon(s) selected")
             
             st.markdown("---")
-            st.subheader("Controls")
+            st.subheader("Data Refresh")
             
-            auto_refresh = st.checkbox("Auto-refresh", value=view_mode == "Current Location")
+            if st.button("🔄 Update Data", type="primary", use_container_width=True, help="Fetch latest beacon positions"):
+                st.rerun()
+            
+            st.caption("Zoom and pan are preserved until you update")
+            
+            auto_refresh = st.checkbox("Auto-refresh", value=False, help="Auto-updates may reset zoom level")
             if auto_refresh:
                 refresh_interval = st.slider("Refresh (sec)", 2, 10, 3)
+                st.caption("⚠️ Zoom resets on each auto-update")
+            
+            st.markdown("---")
+            st.subheader("Signal Processor")
             
             processor = get_signal_processor()
             processor.check_and_restart()
             
             if processor.is_running:
-                st.success("Processor: Running")
+                st.success("✓ Running")
             else:
-                st.warning("Processor: Stopped")
+                st.warning("Stopped")
                 if st.button("Start Processor", type="primary"):
                     if processor.start():
                         st.rerun()
-            
-            if st.button("Refresh Now"):
-                st.rerun()
         
         st.session_state.chart_params = {
             'floor_id': selected_floor_id,

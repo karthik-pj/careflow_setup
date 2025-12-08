@@ -177,6 +177,21 @@ The system supports configurable position calculation settings in MQTT Configura
 - Font: Inter (Google Fonts)
 - Theme configured in .streamlit/config.toml
 
+## Live Tracking UX
+- **Auto-refresh is OFF by default** - Allows users to zoom and pan without interruption
+- **Manual "Update Data" button** - Users refresh when ready to see latest positions
+- Zoom and pan state is preserved until the user clicks Update
+- Auto-refresh option available but warns that zoom will reset on each update
+- This design is due to Streamlit's DOM recreation on rerun, which cannot preserve Plotly zoom state
+
+## Floor Plan Formats
+- **Image Upload**: PNG, JPG, GIF, WebP images with manual dimension entry
+- **GeoJSON**: Architectural vector files with automatic coordinate transformation
+- **DXF (AutoCAD)**: CAD files parsed with ezdxf library
+  - Supports LINE, LWPOLYLINE, POLYLINE, CIRCLE, ARC, SPLINE, ELLIPSE, TEXT, MTEXT, INSERT (block references)
+  - Block references are expanded with proper transformation matrices
+  - Users should export DWG to DXF before upload
+
 ## Recent Changes
 - December 2025: Initial implementation with full feature set
 - December 2025: Fixed database session management with context managers
@@ -188,3 +203,5 @@ The system supports configurable position calculation settings in MQTT Configura
 - December 2025: Fixed signal processor architecture - replaced thread-based with callback + scheduler for Streamlit compatibility
 - December 2025: Improved position smoothing to be more responsive (single-step smoothing with alpha=0.7)
 - December 2025: Added DXF floor plan support using ezdxf library for CAD file parsing
+- December 2025: Fixed phantom beacon movement with 0.3m stability threshold
+- December 2025: Improved Live Tracking UX - auto-refresh OFF by default to preserve zoom/pan state
