@@ -382,6 +382,125 @@ def create_heatmap_figure(floor, positions_data, gateways_data):
     return fig
 
 
+def render_chart_fragment():
+    """Fragment for chart rendering - auto-refreshes without losing zoom state"""
+    if 'chart_params' not in st.session_state:
+        return
+    
+    params = st.session_state.chart_params
+    
+    with get_db_session() as session:
+        floor = session.query(Floor).filter(Floor.id == params['floor_id']).first()
+        if not floor:
+            st.warning("Floor not found")
+            return
+        
+        gateways = session.query(Gateway).filter(
+            Gateway.floor_id == params['floor_id'],
+            Gateway.is_active == True
+        ).all()
+        
+        gateways_data = [
+            {'name': gw.name, 'x': gw.x_position, 'y': gw.y_position, 'id': gw.id}
+            for gw in gateways
+        ]
+        
+        cutoff_time = datetime.utcnow() - timedelta(minutes=params['time_minutes'])
+        
+        if params['beacon_ids']:
+            beacons_map = {b.id: b for b in session.query(Beacon).filter(
+                Beacon.id.in_(params['beacon_ids'])
+            ).all()}
+            
+            positions_query = session.query(Position).filter(
+                Position.floor_id == params['floor_id'],
+                Position.timestamp >= cutoff_time,
+                Position.beacon_id.in_(params['beacon_ids'])
+            ).order_by(Position.timestamp.asc())
+            
+            max_points = 5000
+            recent_positions = positions_query.limit(max_points).all()
+        else:
+            beacons_map = {}
+            recent_positions = []
+        
+        positions_data = {}
+        beacon_info = {}
+        for pos in recent_positions:
+            beacon = beacons_map.get(pos.beacon_id)
+            if beacon:
+                if beacon.name not in positions_data:
+                    positions_data[beacon.name] = []
+                    beacon_info[beacon.name] = {
+                        'mac': beacon.mac_address,
+                        'type': beacon.resource_type,
+                        'id': beacon.id
+                    }
+                positions_data[beacon.name].append({
+                    'x': pos.x_position,
+                    'y': pos.y_position,
+                    'velocity_x': pos.velocity_x,
+                    'velocity_y': pos.velocity_y,
+                    'speed': pos.speed,
+                    'timestamp': pos.timestamp
+                })
+        
+        st.subheader(f"{floor.name or f'Floor {floor.floor_number}'}")
+        
+        view_mode = params['view_mode']
+        if view_mode == "Current Location":
+            fig = create_current_location_figure(floor, positions_data, gateways_data, beacon_info)
+        elif view_mode == "Spaghetti Map":
+            fig = create_spaghetti_figure(floor, positions_data, gateways_data, beacon_info)
+        else:
+            fig = create_heatmap_figure(floor, positions_data, gateways_data)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+        
+        with col_stats1:
+            st.metric("Gateways", len(gateways))
+        
+        with col_stats2:
+            st.metric("Beacons Visible", len(positions_data))
+        
+        with col_stats3:
+            total_points = sum(len(p) for p in positions_data.values())
+            st.metric("Data Points", total_points)
+        
+        with col_stats4:
+            st.metric("Time Window", f"{params['time_minutes']}m")
+        
+        if positions_data and view_mode == "Current Location":
+            st.markdown("---")
+            st.subheader("Beacon Details")
+            
+            for beacon_name, pos_list in positions_data.items():
+                if pos_list:
+                    latest = pos_list[-1]
+                    info = beacon_info.get(beacon_name, {})
+                    resource_icon = {
+                        'Staff': '👤', 'Patient': '🏥', 'Asset': '📦',
+                        'Device': '📱', 'Vehicle': '🚗', 'Equipment': '🔧'
+                    }.get(info.get('type', ''), '📍')
+                    
+                    with st.expander(f"{resource_icon} {beacon_name}", expanded=False):
+                        c1, c2, c3 = st.columns(3)
+                        with c1:
+                            st.write(f"**Position:** ({latest['x']:.1f}, {latest['y']:.1f})")
+                        with c2:
+                            st.write(f"**Speed:** {latest.get('speed', 0):.2f} m/s")
+                        with c3:
+                            st.write(f"**Updated:** {latest['timestamp'].strftime('%H:%M:%S')}")
+        
+        elif not positions_data:
+            if params['beacon_ids']:
+                st.info("No position data found for the selected beacons in this time frame. Make sure the signal processor is running.")
+            else:
+                st.info("Select beacons to display on the floor plan.")
+
+
 def render():
     st.title("Live Tracking")
     st.markdown("Real-time beacon position tracking with floor plan visualization")
@@ -512,6 +631,13 @@ def render():
             if st.button("Refresh Now"):
                 st.rerun()
         
+        st.session_state.chart_params = {
+            'floor_id': selected_floor_id,
+            'beacon_ids': selected_beacon_ids,
+            'view_mode': view_mode,
+            'time_minutes': time_minutes
+        }
+        
         with col2:
             floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
             
@@ -519,110 +645,13 @@ def render():
                 st.warning("No floor plan uploaded for this floor. Please upload a floor plan in the Buildings section.")
                 st.info(f"Current floor dimensions: {floor.width_meters:.1f}m x {floor.height_meters:.1f}m")
             
-            gateways = session.query(Gateway).filter(
-                Gateway.floor_id == selected_floor_id,
-                Gateway.is_active == True
-            ).all()
-            
-            gateways_data = [
-                {'name': gw.name, 'x': gw.x_position, 'y': gw.y_position, 'id': gw.id}
-                for gw in gateways
-            ]
-            
-            cutoff_time = datetime.utcnow() - timedelta(minutes=time_minutes)
-            
-            if selected_beacon_ids:
-                beacons_map = {b.id: b for b in session.query(Beacon).filter(
-                    Beacon.id.in_(selected_beacon_ids)
-                ).all()}
-                
-                positions_query = session.query(Position).filter(
-                    Position.floor_id == selected_floor_id,
-                    Position.timestamp >= cutoff_time,
-                    Position.beacon_id.in_(selected_beacon_ids)
-                ).order_by(Position.timestamp.asc())
-                
-                max_points = 5000
-                recent_positions = positions_query.limit(max_points).all()
-            else:
-                beacons_map = {}
-                recent_positions = []
-            
-            positions_data = {}
-            beacon_info = {}
-            for pos in recent_positions:
-                beacon = beacons_map.get(pos.beacon_id)
-                if beacon:
-                    if beacon.name not in positions_data:
-                        positions_data[beacon.name] = []
-                        beacon_info[beacon.name] = {
-                            'mac': beacon.mac_address,
-                            'type': beacon.resource_type,
-                            'id': beacon.id
-                        }
-                    positions_data[beacon.name].append({
-                        'x': pos.x_position,
-                        'y': pos.y_position,
-                        'velocity_x': pos.velocity_x,
-                        'velocity_y': pos.velocity_y,
-                        'speed': pos.speed,
-                        'timestamp': pos.timestamp
-                    })
-            
-            st.subheader(f"{floor.name or f'Floor {floor.floor_number}'}")
-            
-            if view_mode == "Current Location":
-                fig = create_current_location_figure(floor, positions_data, gateways_data, beacon_info)
-            elif view_mode == "Spaghetti Map":
-                fig = create_spaghetti_figure(floor, positions_data, gateways_data, beacon_info)
-            else:
-                fig = create_heatmap_figure(floor, positions_data, gateways_data)
-            
-            st.plotly_chart(fig, key="floor_plan_chart")
-            
-            col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
-            
-            with col_stats1:
-                st.metric("Gateways", len(gateways))
-            
-            with col_stats2:
-                st.metric("Beacons Visible", len(positions_data))
-            
-            with col_stats3:
-                total_points = sum(len(p) for p in positions_data.values())
-                st.metric("Data Points", total_points)
-            
-            with col_stats4:
-                st.metric("Time Window", f"{time_minutes}m")
-            
-            if positions_data and view_mode == "Current Location":
-                st.markdown("---")
-                st.subheader("Beacon Details")
-                
-                for beacon_name, pos_list in positions_data.items():
-                    if pos_list:
-                        latest = pos_list[-1]
-                        info = beacon_info.get(beacon_name, {})
-                        resource_icon = {
-                            'Staff': '👤', 'Patient': '🏥', 'Asset': '📦',
-                            'Device': '📱', 'Vehicle': '🚗', 'Equipment': '🔧'
-                        }.get(info.get('type', ''), '📍')
-                        
-                        with st.expander(f"{resource_icon} {beacon_name}", expanded=False):
-                            c1, c2, c3 = st.columns(3)
-                            with c1:
-                                st.write(f"**Position:** ({latest['x']:.1f}, {latest['y']:.1f})")
-                            with c2:
-                                st.write(f"**Speed:** {latest.get('speed', 0):.2f} m/s")
-                            with c3:
-                                st.write(f"**Updated:** {latest['timestamp'].strftime('%H:%M:%S')}")
-            
-            elif not positions_data:
-                if selected_beacon_ids:
-                    st.info("No position data found for the selected beacons in this time frame. Make sure the signal processor is running.")
-                else:
-                    st.info("Select beacons to display on the floor plan.")
-            
             if auto_refresh:
-                time.sleep(refresh_interval)
-                st.rerun()
+                refresh_seconds = refresh_interval
+                
+                @st.fragment(run_every=f"{refresh_seconds}s")
+                def auto_refresh_chart():
+                    render_chart_fragment()
+                
+                auto_refresh_chart()
+            else:
+                render_chart_fragment()
