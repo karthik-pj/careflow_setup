@@ -157,7 +157,9 @@ def smooth_position(
     alpha: float = 0.3
 ) -> Tuple[float, float]:
     """
-    Apply exponential smoothing to reduce position jitter.
+    Apply simple exponential smoothing to reduce position jitter.
+    
+    Uses single-step smoothing for more responsive movement detection.
     
     Args:
         current_pos: Current calculated position
@@ -170,12 +172,9 @@ def smooth_position(
     if not previous_positions:
         return current_pos
     
-    smoothed_x = current_pos[0]
-    smoothed_y = current_pos[1]
-    
-    for prev_pos in reversed(previous_positions[-5:]):
-        smoothed_x = alpha * smoothed_x + (1 - alpha) * prev_pos[0]
-        smoothed_y = alpha * smoothed_y + (1 - alpha) * prev_pos[1]
+    last_pos = previous_positions[-1]
+    smoothed_x = alpha * current_pos[0] + (1 - alpha) * last_pos[0]
+    smoothed_y = alpha * current_pos[1] + (1 - alpha) * last_pos[1]
     
     return smoothed_x, smoothed_y
 
