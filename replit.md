@@ -185,3 +185,5 @@ The system supports configurable position calculation settings in MQTT Configura
 - December 2025: Updated branding from Moko to Careflow with logo and color scheme
 - December 2025: Added MQTT publishing for beacon positions and zone alerts with async queue architecture
 - December 2025: Fixed signal processor architecture - replaced thread-based with callback + scheduler for Streamlit compatibility
+- December 2025: Improved position smoothing to be more responsive (single-step smoothing with alpha=0.7)
+- December 2025: Added DXF floor plan support using ezdxf library for CAD file parsing

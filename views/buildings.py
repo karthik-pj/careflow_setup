@@ -6,6 +6,7 @@ from io import BytesIO
 from PIL import Image
 import json
 import re
+from utils.dwg_parser import parse_dxf_file, dxf_to_geojson, get_dxf_dimensions, detect_dxf_scale
 
 
 def show_pending_message():
@@ -267,9 +268,9 @@ def render_floor_plans():
         
         plan_type = st.radio(
             "Floor Plan Type",
-            ["Image (PNG/JPG)", "GeoJSON"],
+            ["Image (PNG/JPG)", "DXF (AutoCAD)", "GeoJSON"],
             horizontal=True,
-            help="Choose between uploading an image or a GeoJSON architectural file",
+            help="Choose between uploading an image, DXF CAD file, or GeoJSON architectural file",
             key="floor_plan_type_selector"
         )
         
@@ -317,6 +318,110 @@ def render_floor_plans():
                         session.add(floor)
                         session.commit()
                         set_success_and_rerun("Floor plan image uploaded successfully!")
+        
+        elif plan_type == "DXF (AutoCAD)":
+            st.info("Upload a DXF file exported from AutoCAD, ArchiCAD, or other CAD software. For DWG files, please export to DXF first (File → Save As → DXF in AutoCAD).")
+            
+            with st.form("add_floor_dxf"):
+                selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="dxf_building")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="dxf_floor_num")
+                    floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="dxf_floor_name")
+                
+                with col2:
+                    scale_option = st.selectbox(
+                        "Scale",
+                        ["Auto-detect", "Millimeters", "Centimeters", "Meters", "Inches", "Feet"],
+                        help="Select the unit used in your DXF file",
+                        key="dxf_scale"
+                    )
+                
+                dxf_file = st.file_uploader(
+                    "Upload DXF Floor Plan*",
+                    type=['dxf'],
+                    help="Upload a DXF file from AutoCAD or similar CAD software",
+                    key="dxf_uploader"
+                )
+                
+                with st.expander("Advanced Settings"):
+                    wall_layers = st.text_input(
+                        "Wall Layer Names (comma-separated)",
+                        value="WALL,WALLS,A-WALL,S-WALL,PARTITION",
+                        help="Layer names that contain walls"
+                    )
+                    room_layers = st.text_input(
+                        "Room Layer Names (comma-separated)",
+                        value="ROOM,ROOMS,A-AREA,A-ROOM,SPACE,ZONE",
+                        help="Layer names that contain rooms/spaces"
+                    )
+                
+                submitted = st.form_submit_button("Add Floor Plan", type="primary")
+                
+                if submitted:
+                    if not selected_building:
+                        st.error("Please select a building")
+                    elif not dxf_file:
+                        st.error("Please upload a DXF file")
+                    else:
+                        try:
+                            dxf_content = dxf_file.read()
+                            dxf_data = parse_dxf_file(dxf_content)
+                            
+                            if scale_option == "Auto-detect":
+                                scale = detect_dxf_scale(dxf_data)
+                            else:
+                                scale_map = {
+                                    "Millimeters": 0.001,
+                                    "Centimeters": 0.01,
+                                    "Meters": 1.0,
+                                    "Inches": 0.0254,
+                                    "Feet": 0.3048
+                                }
+                                scale = scale_map.get(scale_option, 1.0)
+                            
+                            wall_layer_list = [l.strip() for l in wall_layers.split(',')]
+                            room_layer_list = [l.strip() for l in room_layers.split(',')]
+                            
+                            bounds = dxf_data.get('bounds')
+                            origin_x = bounds['min_x'] if bounds else 0
+                            origin_y = bounds['min_y'] if bounds else 0
+                            
+                            geojson_str = dxf_to_geojson(
+                                dxf_data, 
+                                scale=scale, 
+                                origin_x=origin_x,
+                                origin_y=origin_y,
+                                wall_layers=wall_layer_list,
+                                room_layers=room_layer_list
+                            )
+                            
+                            width, height = get_dxf_dimensions(dxf_data, scale)
+                            
+                            floor = Floor(
+                                building_id=building_options[selected_building],
+                                floor_number=floor_number,
+                                name=floor_name or f"Floor {floor_number}",
+                                floor_plan_geojson=geojson_str,
+                                floor_plan_filename=dxf_file.name,
+                                floor_plan_type='dxf',
+                                width_meters=round(width, 2),
+                                height_meters=round(height, 2),
+                                origin_lat=0,
+                                origin_lon=0
+                            )
+                            session.add(floor)
+                            session.commit()
+                            
+                            entity_count = dxf_data.get('entity_count', 0)
+                            layers = dxf_data.get('layers', [])
+                            set_success_and_rerun(f"DXF floor plan uploaded! Found {entity_count} entities across {len(layers)} layers. Dimensions: {width:.1f}m x {height:.1f}m")
+                            
+                        except Exception as e:
+                            st.error(f"Error parsing DXF file: {str(e)}")
+        
         else:
             selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="geo_building")
             

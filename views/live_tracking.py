@@ -20,6 +20,74 @@ def latlon_to_meters(lat, lon, origin_lat, origin_lon):
     return dx, dy
 
 
+def render_dxf_floor_plan(fig, floor):
+    """Render DXF floor plan (stored as GeoJSON) in local meter coordinates"""
+    if not floor.floor_plan_geojson:
+        return False
+    
+    try:
+        geojson_data = json.loads(floor.floor_plan_geojson)
+        
+        for feature in geojson_data.get('features', []):
+            props = feature.get('properties', {})
+            geom = feature.get('geometry', {})
+            geom_type = props.get('geomType', '')
+            entity_type = props.get('entityType', '')
+            
+            if geom.get('type') == 'Polygon':
+                coords = geom.get('coordinates', [[]])[0]
+                if coords:
+                    xs = [c[0] for c in coords]
+                    ys = [c[1] for c in coords]
+                    
+                    name = props.get('name', 'Unnamed')
+                    
+                    if geom_type == 'room':
+                        fill_color = 'rgba(46, 92, 191, 0.15)'
+                        line_color = '#2e5cbf'
+                    else:
+                        fill_color = 'rgba(200, 200, 200, 0.1)'
+                        line_color = '#666'
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        fill='toself',
+                        fillcolor=fill_color,
+                        line=dict(color=line_color, width=1),
+                        name=name,
+                        hovertemplate=f"<b>{name}</b><extra></extra>",
+                        mode='lines',
+                        showlegend=False
+                    ))
+            
+            elif geom.get('type') == 'LineString':
+                coords = geom.get('coordinates', [])
+                if coords:
+                    xs = [c[0] for c in coords]
+                    ys = [c[1] for c in coords]
+                    
+                    if geom_type == 'wall':
+                        line_width = 2
+                        line_color = '#333'
+                    else:
+                        line_width = 1
+                        line_color = '#666'
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs,
+                        y=ys,
+                        mode='lines',
+                        line=dict(color=line_color, width=line_width),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    ))
+        
+        return True
+    except Exception as e:
+        return False
+
+
 def render_geojson_floor_plan(fig, floor):
     """Render GeoJSON floor plan as Plotly traces in meter coordinates"""
     if not floor.floor_plan_geojson or not floor.origin_lat or not floor.origin_lon:
@@ -129,6 +197,9 @@ def create_floor_plan_base(floor):
     
     if not has_floor_plan and floor.floor_plan_geojson:
         has_floor_plan = render_geojson_floor_plan(fig, floor)
+    
+    if not has_floor_plan and floor.floor_plan_type == 'dxf' and floor.floor_plan_geojson:
+        has_floor_plan = render_dxf_floor_plan(fig, floor)
     
     fig.update_layout(
         xaxis=dict(
