@@ -149,6 +149,36 @@ The system supports configurable position calculation settings in MQTT Configura
 - **Position Smoothing**: Exponential smoothing to reduce jitter (alpha 0.1-1.0)
 - **Stability Threshold**: Positions only update when movement exceeds 0.3 meters (prevents phantom drift from RSSI noise)
 
+## Triangulation Engine
+The positioning system uses multiple algorithms for improved accuracy:
+
+### Algorithms
+- **Log-distance path loss model**: Converts RSSI to distance (default path_loss_exponent=2.5 for indoor)
+- **Median RSSI filtering**: Uses median with IQR outlier removal for robust signal aggregation
+- **Weighted trilateration**: Stronger signals get higher weight in position calculation
+- **Kalman filtering**: Temporal smoothing tracks position and velocity for reduced jitter
+- **Geometric intersection**: For 2 gateways, uses circle intersection with weighted averaging
+
+### Accuracy Requirements
+**Important: Achieving sub-meter accuracy requires proper hardware setup:**
+
+| Gateways | Typical Accuracy | Notes |
+|----------|------------------|-------|
+| 1 | ~10-20m | Only distance from single point |
+| 2 | ~3-10m | Position along line between gateways |
+| 3+ | ~1-3m | True 2D triangulation possible |
+| 4+ (calibrated) | ~0.5-2m | Best BLE performance with good geometry |
+
+**For ±0.5m accuracy, you need:**
+- Minimum 3-4 gateways per floor with surrounding geometry (not in a line)
+- Per-gateway calibration of tx_power and path_loss_exponent using known reference points
+- Or consider UWB (Ultra-Wideband) technology for centimeter-level accuracy
+
+### Per-Gateway Calibration
+Each gateway can have custom calibration values:
+- **tx_power**: Signal strength at 1 meter (typical: -59 to -65 dBm)
+- **path_loss_exponent**: Environment factor (2.0=free space, 2.5=light indoor, 3.0-4.0=dense indoor)
+
 ## Technical Notes
 - Database sessions use context managers to prevent connection leaks
 - **Signal Processor Architecture** (Streamlit-compatible):

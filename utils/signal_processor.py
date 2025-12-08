@@ -350,13 +350,13 @@ class SignalProcessor:
                                 y=gateway.y_position,
                                 rssi=rssi,
                                 tx_power=tx_power,
-                                path_loss_exponent=gateway.path_loss_exponent or 2.0
+                                path_loss_exponent=gateway.path_loss_exponent or 2.5
                             ))
                             floor_id = gateway.floor_id
                     
                     if len(readings) >= 1 and floor_id:
                         readings = filter_outlier_readings(readings)
-                        x, y, accuracy = trilaterate_2d(readings)
+                        x, y, accuracy = trilaterate_2d(readings, beacon_id=beacon_id)
                         
                         if self._position_smoothing_alpha < 1.0 and beacon_id in self._position_history:
                             prev_positions = self._position_history[beacon_id]
