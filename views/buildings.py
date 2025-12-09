@@ -407,8 +407,8 @@ def render_floor_plans():
                                 floor_plan_geojson=geojson_str,
                                 floor_plan_filename=dxf_file.name,
                                 floor_plan_type='dxf',
-                                width_meters=round(width, 2),
-                                height_meters=round(height, 2),
+                                width_meters=float(round(width, 2)),
+                                height_meters=float(round(height, 2)),
                                 origin_lat=0,
                                 origin_lon=0
                             )

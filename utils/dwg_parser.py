@@ -120,12 +120,12 @@ def parse_dxf_file(file_content: bytes) -> Dict[str, Any]:
         bounds = None
         if all_x and all_y:
             bounds = {
-                'min_x': min(all_x),
-                'max_x': max(all_x),
-                'min_y': min(all_y),
-                'max_y': max(all_y),
-                'width': max(all_x) - min(all_x),
-                'height': max(all_y) - min(all_y)
+                'min_x': float(min(all_x)),
+                'max_x': float(max(all_x)),
+                'min_y': float(min(all_y)),
+                'max_y': float(max(all_y)),
+                'width': float(max(all_x) - min(all_x)),
+                'height': float(max(all_y) - min(all_y))
             }
         
         units_code = doc.header.get('$INSUNITS', 0)
