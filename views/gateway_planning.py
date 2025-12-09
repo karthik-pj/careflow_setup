@@ -7,7 +7,7 @@ import math
 from io import BytesIO
 from PIL import Image
 from database.models import (
-    get_db_session, Building, Floor, Gateway, GatewayPlan, PlannedGateway
+    get_db_session, Building, Floor, Gateway, GatewayPlan, PlannedGateway, CoverageZone
 )
 
 
@@ -562,6 +562,132 @@ def extract_building_bounds(floor):
     }
 
 
+def point_in_polygon(x, y, polygon):
+    """Ray casting algorithm to check if point is inside polygon.
+    
+    Args:
+        x, y: Point coordinates
+        polygon: List of [x, y] coordinates forming the polygon
+    
+    Returns:
+        True if point is inside polygon
+    """
+    n = len(polygon)
+    inside = False
+    
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i][0], polygon[i][1]
+        xj, yj = polygon[j][0], polygon[j][1]
+        
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    
+    return inside
+
+
+def get_coverage_zone_bounds(zone):
+    """Extract bounds from a coverage zone polygon"""
+    try:
+        coords = json.loads(zone.polygon_coords)
+        if coords:
+            xs = [c[0] for c in coords]
+            ys = [c[1] for c in coords]
+            return {
+                'min_x': min(xs), 'max_x': max(xs),
+                'min_y': min(ys), 'max_y': max(ys),
+                'width': max(xs) - min(xs),
+                'height': max(ys) - min(ys),
+                'center_x': (min(xs) + max(xs)) / 2,
+                'center_y': (min(ys) + max(ys)) / 2,
+                'polygon': coords
+            }
+    except Exception:
+        pass
+    return None
+
+
+def suggest_gateway_positions_for_zone(zone_bounds, num_gateways, signal_range=15.0):
+    """Suggest gateway positions within a coverage zone polygon."""
+    suggestions = []
+    
+    bx_min, bx_max = zone_bounds['min_x'], zone_bounds['max_x']
+    by_min, by_max = zone_bounds['min_y'], zone_bounds['max_y']
+    bw = zone_bounds['width']
+    bh = zone_bounds['height']
+    cx, cy = zone_bounds['center_x'], zone_bounds['center_y']
+    polygon = zone_bounds.get('polygon', [])
+    
+    wall_offset = 1.5
+    
+    if num_gateways <= 2:
+        candidates = [
+            {"x": bx_min + wall_offset, "y": cy, "name": "GW-1 (West)"},
+            {"x": bx_max - wall_offset, "y": cy, "name": "GW-2 (East)"},
+        ]
+    elif num_gateways == 3:
+        candidates = [
+            {"x": bx_min + wall_offset, "y": by_min + bh * 0.3, "name": "GW-1 (SW)"},
+            {"x": bx_max - wall_offset, "y": by_min + bh * 0.3, "name": "GW-2 (SE)"},
+            {"x": cx, "y": by_max - wall_offset, "name": "GW-3 (N)"},
+        ]
+    elif num_gateways == 4:
+        candidates = [
+            {"x": bx_min + wall_offset, "y": by_min + wall_offset, "name": "GW-1 (SW)"},
+            {"x": bx_max - wall_offset, "y": by_min + wall_offset, "name": "GW-2 (SE)"},
+            {"x": bx_max - wall_offset, "y": by_max - wall_offset, "name": "GW-3 (NE)"},
+            {"x": bx_min + wall_offset, "y": by_max - wall_offset, "name": "GW-4 (NW)"},
+        ]
+    else:
+        candidates = []
+        perimeter = 2 * (bw + bh)
+        spacing = perimeter / num_gateways
+        current_dist = spacing / 2
+        gw_num = 1
+        
+        sides = [
+            ('S', bx_min, by_min + wall_offset, bx_max, by_min + wall_offset, bw),
+            ('E', bx_max - wall_offset, by_min, bx_max - wall_offset, by_max, bh),
+            ('N', bx_max, by_max - wall_offset, bx_min, by_max - wall_offset, bw),
+            ('W', bx_min + wall_offset, by_max, bx_min + wall_offset, by_min, bh),
+        ]
+        
+        cumulative = 0
+        for side_name, x1, y1, x2, y2, length in sides:
+            while current_dist < cumulative + length and gw_num <= num_gateways:
+                t = (current_dist - cumulative) / length
+                x = x1 + t * (x2 - x1)
+                y = y1 + t * (y2 - y1)
+                candidates.append({"x": x, "y": y, "name": f"GW-{gw_num} ({side_name})"})
+                gw_num += 1
+                current_dist += spacing
+            cumulative += length
+    
+    for c in candidates:
+        if polygon:
+            if point_in_polygon(c['x'], c['y'], polygon):
+                suggestions.append({
+                    "x": round(float(c['x']), 2),
+                    "y": round(float(c['y']), 2),
+                    "name": c['name']
+                })
+            else:
+                suggestions.append({
+                    "x": round(float(cx), 2),
+                    "y": round(float(cy), 2),
+                    "name": c['name'] + " (adjusted)"
+                })
+        else:
+            suggestions.append({
+                "x": round(float(c['x']), 2),
+                "y": round(float(c['y']), 2),
+                "name": c['name']
+            })
+    
+    return suggestions
+
+
 def suggest_gateway_positions(floor_width: float, floor_height: float, num_gateways: int, 
                               signal_range: float = 15.0, floor=None) -> list:
     """Suggest optimal gateway positions inside the actual building footprint.
@@ -782,6 +908,37 @@ def render_gateway_planning():
                         fillcolor="rgba(46, 92, 191, 0.05)"
                     )
                 
+                coverage_zones = session.query(CoverageZone).filter(
+                    CoverageZone.floor_id == selected_floor_id,
+                    CoverageZone.is_active == True
+                ).order_by(CoverageZone.priority.desc()).all()
+                
+                for cz in coverage_zones:
+                    try:
+                        coords = json.loads(cz.polygon_coords)
+                        if coords:
+                            xs = [c[0] for c in coords]
+                            ys = [c[1] for c in coords]
+                            
+                            if xs[0] != xs[-1] or ys[0] != ys[-1]:
+                                xs.append(xs[0])
+                                ys.append(ys[0])
+                            
+                            zone_color = cz.color or '#2e5cbf'
+                            r, g, b = int(zone_color[1:3], 16), int(zone_color[3:5], 16), int(zone_color[5:7], 16)
+                            
+                            fig.add_trace(go.Scatter(
+                                x=xs, y=ys,
+                                fill='toself',
+                                fillcolor=f'rgba({r}, {g}, {b}, 0.15)',
+                                line=dict(color=zone_color, width=2, dash='dash'),
+                                mode='lines',
+                                name=f"{cz.name} (±{cz.target_accuracy}m)",
+                                hovertemplate=f"<b>{cz.name}</b><br>Target: ±{cz.target_accuracy}m<extra></extra>"
+                            ))
+                    except Exception:
+                        pass
+                
                 planned_gateways = []
                 if current_plan:
                     db_planned_gateways = session.query(PlannedGateway).filter(
@@ -895,6 +1052,11 @@ def render_gateway_planning():
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
+                
+                if coverage_zones:
+                    st.info(f"📍 **{len(coverage_zones)} coverage zone(s) defined** - Gateways will be placed within these areas. [Manage zones →](Coverage Zones)")
+                else:
+                    st.caption("💡 Tip: Define coverage zones to specify which areas need positioning. Go to **Coverage Zones** in the sidebar.")
                 
                 if current_plan:
                     quality = evaluate_placement_quality(
