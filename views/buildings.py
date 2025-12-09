@@ -341,9 +341,10 @@ def render_floor_plans():
                 
                 dxf_file = st.file_uploader(
                     "Upload DXF Floor Plan*",
-                    type=None,
-                    help="Upload a DXF file from AutoCAD or similar CAD software (.dxf extension)",
-                    key="dxf_uploader"
+                    accept_multiple_files=False,
+                    help="Upload a DXF file from AutoCAD or similar CAD software (.dxf extension). Drag and drop or click Browse.",
+                    key="dxf_uploader",
+                    label_visibility="visible"
                 )
                 
                 with st.expander("Advanced Settings"):
