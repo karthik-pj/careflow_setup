@@ -1,263 +1,73 @@
 # Careflow Setup
 
 ## Overview
-A Streamlit-based indoor positioning system for managing Careflow BLE Gateway devices, BLE beacons, and real-time location tracking with triangulation on floor plans.
+Careflow is a Streamlit-based indoor positioning system designed for managing Careflow BLE Gateway devices and beacons. Its primary purpose is real-time location tracking using triangulation on uploaded floor plans. The system aims to provide accurate indoor positioning, enabling features like asset tracking, staff monitoring, and geofencing.
 
-## Features
+**Business Vision & Market Potential:** Careflow addresses the growing need for precise indoor location services in various sectors, including healthcare, logistics, and smart buildings. By offering a comprehensive solution from device management to real-time visualization and advanced analytics, Careflow aims to be a leading platform for indoor positioning.
 
-### Core Features
-- **Building Management**: Create buildings with GPS coordinates and multi-story floor plans
-- **Gateway Configuration**: Set up Careflow BLE gateways with precise positioning and calibration
-- **Beacon Registration**: Register BLE beacons with resource types (Device, Staff, Asset, etc.)
-- **MQTT Integration**: Connect to MQTT broker for receiving real-time RSSI signals
-- **Triangulation Engine**: Calculate beacon positions from multiple gateway signals using weighted least squares
-- **Live Tracking**: Visualize beacon positions and movement vectors on floor plans
-- **Signal Monitor**: Debug and monitor incoming signals with manual testing capability
-- **Background Processing**: Automatic signal ingestion and position calculation in background thread
+**Key Capabilities:**
+*   Manage buildings, floor plans, BLE gateways, and beacons.
+*   Real-time beacon position tracking and visualization.
+*   MQTT integration for signal ingestion and data publishing.
+*   Advanced triangulation and signal processing for accuracy.
+*   Features for historical playback, geofencing, and analytics.
+*   Tools for gateway planning and calibration to optimize performance.
 
-### Phase 2 Features
-- **Historical Playback**: Replay beacon movement patterns from historical data with adjustable speed
-- **Zones & Alerts**: Define geofencing zones and monitor entry/exit alerts with acknowledgment
-- **Analytics Dashboard**: Heatmaps, dwell time analysis, and traffic patterns by hour
-- **Import/Export**: Bulk import and export of gateway, beacon, and zone configurations (JSON/CSV)
-- **Calibration Wizard**: Improve triangulation accuracy using known beacon positions
+## User Preferences
+I prefer detailed explanations and clear breakdowns of complex topics. I want an iterative development approach where I can review changes frequently. Please ask before making major changes or architectural decisions. Do not make changes to the `database/models.py` file without explicit instruction.
 
-## Project Structure
-```
-├── app.py                    # Main Streamlit application
-├── database/
-│   ├── __init__.py          # Database exports
-│   └── models.py            # SQLAlchemy models with context manager
-├── views/                    # Named 'views' to avoid Streamlit multipage detection
-│   ├── dashboard.py         # System overview
-│   ├── buildings.py         # Building and floor plan management
-│   ├── gateways.py          # Gateway configuration
-│   ├── beacons.py           # Beacon registration
-│   ├── mqtt_config.py       # MQTT broker settings
-│   ├── live_tracking.py     # Real-time visualization
-│   ├── history_playback.py  # Historical playback with timeline controls
-│   ├── zones_alerts.py      # Geofencing zones and alert management
-│   ├── analytics.py         # Heatmaps, dwell time, traffic patterns
-│   ├── import_export.py     # Bulk import/export functionality
-│   ├── calibration.py       # Calibration wizard and accuracy analysis
-│   └── signal_monitor.py    # Signal debugging
-└── utils/
-    ├── triangulation.py     # Position calculation algorithms
-    ├── mqtt_handler.py      # MQTT client handler (subscription)
-    ├── mqtt_publisher.py    # MQTT publisher for positions/alerts
-    └── signal_processor.py  # Background signal processing
-```
+## System Architecture
 
-## Database Schema
-- **Buildings**: Building information with GPS coordinates
-- **Floors**: Floor plans with dimensions and images
-- **Gateways**: Careflow BLE gateway configurations with positions
-- **Beacons**: BLE beacon registrations with resource types
-- **RSSISignals**: Raw RSSI signal data from gateways
-- **Positions**: Calculated beacon positions with velocity vectors
-- **MQTTConfig**: MQTT broker connection settings (password stored as env var reference)
-- **Zones**: Geofencing zone definitions with alert configuration
-- **ZoneAlerts**: Zone entry/exit alert events with acknowledgment status
-- **CalibrationPoints**: Reference points for accuracy improvement
+### UI/UX Decisions
+The application uses a Streamlit-based interface.
+*   **Branding:** Careflow horizontal logo (attached_assets/CAREFLOW LOGO-Color_1764612034940.png) is displayed in the sidebar.
+*   **Color Scheme:** Careflow Blue (`#2e5cbf`, `#008ed3`).
+*   **Font:** Inter (Google Fonts).
+*   **Live Tracking UX:** Auto-refresh is off by default to preserve zoom/pan state; a manual "Update Data" button is provided.
 
-## Setup Steps
-1. Add a building with floor plans
-2. Configure Careflow BLE gateways with their positions on floor plans
-3. Register BLE beacons to track
-4. Configure MQTT broker connection (set password in Secrets tab)
-5. Start signal processor and begin live tracking
-6. (Optional) Define zones for geofencing alerts
-7. (Optional) Create calibration points to improve accuracy
+### Technical Implementations
+*   **Core Application:** Built with Streamlit (`app.py`).
+*   **Database:** SQLAlchemy ORM with context managers for session management.
+    *   **Schema:** Includes tables for Buildings, Floors, Gateways, Beacons, RSSISignals, Positions, MQTTConfig, Zones, ZoneAlerts, and CalibrationPoints.
+*   **Background Processing:** A dedicated scheduler thread handles continuous position calculation, using Paho MQTT's internal thread for signal storage via callback. This uses a singleton pattern with `@st.cache_resource` and includes heartbeat monitoring.
+*   **Triangulation Engine:**
+    *   Utilizes Log-distance path loss model for RSSI to distance conversion.
+    *   Employs Median RSSI filtering with IQR for robust signal aggregation.
+    *   Applies Weighted trilateration, Kalman filtering, and Geometric intersection.
+    *   Supports per-gateway calibration (`tx_power`, `path_loss_exponent`).
+*   **Floor Plan Support:**
+    *   Supports image uploads (PNG, JPG, GIF, WebP).
+    *   Integrates GeoJSON for architectural vector files.
+    *   Parses DXF (AutoCAD) files using the `ezdxf` library, supporting various entities and block references.
+*   **MQTT Publisher:** Thread-safe singleton with an async message queue for non-blocking publishing of beacon positions and zone alerts.
+*   **Processing Settings:** Configurable refresh rate, signal window, RSSI smoothing, position smoothing (exponential), and stability threshold to prevent phantom drift.
+*   **Security:** MQTT passwords are referenced by environment variables (e.g., `MQTT_PASSWORD`) and not stored in the database.
 
-## MQTT Publishing
-The system can publish beacon positions and zone alerts to MQTT for integration with other applications:
+### Feature Specifications
+*   **Building Management:** Create buildings and multi-story floor plans with GPS coordinates.
+*   **Gateway Configuration:** Set up Careflow BLE gateways, including precise positioning and calibration.
+*   **Beacon Registration:** Register BLE beacons with various resource types (Device, Staff, Asset).
+*   **MQTT Integration:** Connect to an MQTT broker for real-time RSSI signal reception.
+*   **Live Tracking:** Visualize beacon positions and movement vectors on floor plans.
+*   **Signal Monitor:** Tool for debugging and monitoring incoming signals.
+*   **Historical Playback:** Replay beacon movement patterns.
+*   **Zones & Alerts:** Define geofencing zones with configurable alerts and acknowledgment.
+*   **Analytics Dashboard:** Heatmaps, dwell time analysis, and traffic patterns.
+*   **Import/Export:** Bulk import/export of configurations (JSON/CSV).
+*   **Calibration Wizard:** Improve triangulation accuracy using known beacon positions.
+*   **Gateway Planning:** Plan optimal gateway placement based on target accuracy, with auto-suggestion, coverage visualization, and export of installation guides.
+*   **Coverage Zones:** Define polygonal areas on floor plans with specific target accuracy and priority levels.
 
-### Position Messages (Topic: careflow/positions/{beacon_mac})
-```json
-{
-  "type": "position",
-  "beacon": {"mac": "AA:BB:CC:DD:EE:FF", "name": "Beacon Name", "resource_type": "Staff"},
-  "location": {"floor_id": 1, "floor_name": "Floor 1", "building_name": "Building A", "x": 10.5, "y": 20.3, "accuracy": 2.5},
-  "movement": {"speed": 0.5, "heading": 45.0, "velocity_x": 0.3, "velocity_y": 0.4},
-  "timestamp": "2025-12-02T14:00:00.000Z"
-}
-```
+### System Design Choices
+*   **Modularity:** The project is structured into `database`, `views`, and `utils` folders for clear separation of concerns.
+*   **Scalability:** Background processing and async MQTT publishing are designed to handle real-time data streams without blocking the UI.
+*   **Accuracy Focus:** Multiple triangulation algorithms and calibration features are integrated to achieve sub-meter accuracy with appropriate hardware.
 
-### Alert Messages (Topic: careflow/alerts/{alert_type}/{zone_id})
-```json
-{
-  "type": "zone_alert",
-  "alert_type": "entry",
-  "beacon": {"mac": "AA:BB:CC:DD:EE:FF", "name": "Beacon Name", "resource_type": "Staff"},
-  "zone": {"id": 1, "name": "Restricted Area", "floor_name": "Floor 1"},
-  "position": {"x": 10.5, "y": 20.3},
-  "timestamp": "2025-12-02T14:00:00.000Z"
-}
-```
+## External Dependencies
 
-### Publisher Architecture
-- Thread-safe singleton with async message queue
-- Separate paho-mqtt client from subscription handler
-- Non-blocking publish calls (queue with 1000 message capacity)
-- Automatic connection management with callbacks
-
-## MQTT Subscription (Moko MKGW-mini03 Gateways)
-The system is configured to receive data from Moko MKGW-mini03 gateways (CFS/Careflow branded):
-
-### Gateway Topic Structure
-- **Publish (gateway sends data)**: `/cfs1/{gateway_mac}/send` or `/cfs2/{gateway_mac}/send`
-- **Subscribe (gateway receives commands)**: `/cfs1/{gateway_mac}/receive` or `/cfs2/{gateway_mac}/receive`
-
-### Gateway Message Format
-```json
-{
-  "msg_id": 3070,
-  "device_info": {
-    "mac": "00e04c006bf1"
-  },
-  "data": [
-    {
-      "timestamp": 1764768812262,
-      "timezone": 0,
-      "type_code": 0,
-      "type": "ibeacon",
-      "rssi": -61,
-      "connectable": 0,
-      "mac": "b081845989f1",
-      "uuid": "00000000000000000000000000000000",
-      "major": 0,
-      "minor": 0,
-      "rssi_1m": 0
-    }
-  ]
-}
-```
-
-### Multiple Gateway Subscription
-Use comma-separated topics to subscribe to multiple gateways:
-```
-/cfs1/+/send, /cfs2/+/send
-```
-
-## Processing Settings
-The system supports configurable position calculation settings in MQTT Configuration:
-- **Refresh Rate**: 0.5s, 1s, or 2s intervals for position calculation
-- **Signal Window**: How far back to look for RSSI signals (default 10s, max 30s)
-  - Longer window = more stable but less responsive
-  - Shorter window = more responsive but may miss intermittent signals
-- **RSSI Smoothing**: Weighted average of multiple readings from same gateway
-- **Position Smoothing**: Exponential smoothing to reduce jitter (alpha 0.1-1.0)
-- **Stability Threshold**: Positions only update when movement exceeds 0.3 meters (prevents phantom drift from RSSI noise)
-
-## Triangulation Engine
-The positioning system uses multiple algorithms for improved accuracy:
-
-### Algorithms
-- **Log-distance path loss model**: Converts RSSI to distance (default path_loss_exponent=2.5 for indoor)
-- **Median RSSI filtering**: Uses median with IQR outlier removal for robust signal aggregation
-- **Weighted trilateration**: Stronger signals get higher weight in position calculation
-- **Kalman filtering**: Temporal smoothing tracks position and velocity for reduced jitter
-- **Geometric intersection**: For 2 gateways, uses circle intersection with weighted averaging
-
-### Accuracy Requirements
-**Important: Achieving sub-meter accuracy requires proper hardware setup:**
-
-| Gateways | Typical Accuracy | Notes |
-|----------|------------------|-------|
-| 1 | ~10-20m | Only distance from single point |
-| 2 | ~3-10m | Position along line between gateways |
-| 3+ | ~1-3m | True 2D triangulation possible |
-| 4+ (calibrated) | ~0.5-2m | Best BLE performance with good geometry |
-
-**For ±0.5m accuracy, you need:**
-- Minimum 3-4 gateways per floor with surrounding geometry (not in a line)
-- Per-gateway calibration of tx_power and path_loss_exponent using known reference points
-- Or consider UWB (Ultra-Wideband) technology for centimeter-level accuracy
-
-### Per-Gateway Calibration
-Each gateway can have custom calibration values:
-- **tx_power**: Signal strength at 1 meter (typical: -59 to -65 dBm)
-- **path_loss_exponent**: Environment factor (2.0=free space, 2.5=light indoor, 3.0-4.0=dense indoor)
-
-## Technical Notes
-- Database sessions use context managers to prevent connection leaks
-- **Signal Processor Architecture** (Streamlit-compatible):
-  - Uses Paho MQTT's internal thread for signal storage via callback (persistent across Streamlit reruns)
-  - Dedicated scheduler thread for continuous position calculation
-  - Singleton pattern with @st.cache_resource decorator
-  - Heartbeat monitoring and auto-restart mechanism
-- Triangulation uses weighted least squares for position calculation
-- Path loss model: RSSI to distance conversion with configurable calibration
-- Movement vectors calculated from sequential position updates
-- Floor plans support image overlay with coordinate mapping
-- MQTT passwords stored securely via environment variable references
-- Zone alerts are deduplicated within 30-second windows
-- MQTT publisher uses async queue to avoid blocking DB transactions
-- MQTT handler supports both `beacons` and `data` arrays in gateway messages
-- Signal window should be at least 10 seconds for reliable position calculation with intermittent MQTT signals
-
-## Security
-- MQTT passwords are NOT stored in database
-- Password is referenced by environment variable name (e.g., MQTT_PASSWORD)
-- Set the actual password as a Secret in the Secrets tab
-
-## Branding
-- Logo: Careflow horizontal logo displayed in sidebar (attached_assets/CAREFLOW LOGO-Color_1764612034940.png)
-- Color Scheme: Careflow Blue (#2e5cbf, #008ed3)
-- Font: Inter (Google Fonts)
-- Theme configured in .streamlit/config.toml
-
-## Live Tracking UX
-- **Auto-refresh is OFF by default** - Allows users to zoom and pan without interruption
-- **Manual "Update Data" button** - Users refresh when ready to see latest positions
-- Zoom and pan state is preserved until the user clicks Update
-- Auto-refresh option available but warns that zoom will reset on each update
-- This design is due to Streamlit's DOM recreation on rerun, which cannot preserve Plotly zoom state
-
-## Floor Plan Formats
-- **Image Upload**: PNG, JPG, GIF, WebP images with manual dimension entry
-- **GeoJSON**: Architectural vector files with automatic coordinate transformation
-- **DXF (AutoCAD)**: CAD files parsed with ezdxf library
-  - Supports LINE, LWPOLYLINE, POLYLINE, CIRCLE, ARC, SPLINE, ELLIPSE, TEXT, MTEXT, INSERT (block references)
-  - Block references are expanded with proper transformation matrices
-  - Users should export DWG to DXF before upload
-
-## Gateway Planning Feature
-Plan optimal gateway placement before physical installation:
-
-### Features
-- **Target Accuracy Selection**: Choose desired accuracy (±0.5m to ±5m)
-- **Gateway Recommendations**: Calculate recommended number of gateways based on floor area and accuracy
-- **Auto-suggest Positions**: Automatically generate optimal gateway positions with surrounding geometry
-- **Coverage Visualization**: See signal range circles overlaid on floor plans
-- **Placement Quality Score**: Evaluate placement with metrics for coverage percentage and overall score
-- **Export Options**: Download installation guide (Markdown) or configuration (JSON) for field installers
-
-### Workflow
-1. Select building and floor
-2. Choose target accuracy level
-3. Adjust expected signal range
-4. Create a new plan or select existing
-5. Auto-suggest gateway positions or add manually
-6. Review placement quality score and coverage
-7. Export installation guide for field deployment
-8. After physical installation, convert planned positions to active gateways
-
-### Database Tables
-- **gateway_plans**: Plan metadata (floor, target accuracy, signal range)
-- **planned_gateways**: Individual gateway positions within a plan
-
-## Recent Changes
-- December 2025: Initial implementation with full feature set
-- December 2025: Fixed database session management with context managers
-- December 2025: Added background signal processor for automatic data ingestion
-- December 2025: Improved MQTT credential security using environment variables
-- December 2025: Added Phase 2 features (history playback, zones/alerts, analytics, import/export, calibration)
-- December 2025: Updated branding from Moko to Careflow with logo and color scheme
-- December 2025: Added MQTT publishing for beacon positions and zone alerts with async queue architecture
-- December 2025: Fixed signal processor architecture - replaced thread-based with callback + scheduler for Streamlit compatibility
-- December 2025: Improved position smoothing to be more responsive (single-step smoothing with alpha=0.7)
-- December 2025: Added DXF floor plan support using ezdxf library for CAD file parsing
-- December 2025: Fixed phantom beacon movement with 0.3m stability threshold
-- December 2025: Improved Live Tracking UX - auto-refresh OFF by default to preserve zoom/pan state
-- December 2025: Added Gateway Planning feature for infrastructure planning before physical installation
+*   **MQTT Broker:** For real-time RSSI signal ingestion and publishing of positions/alerts.
+*   **Moko MKGW-mini03 Gateways (CFS/Careflow branded):** The system is configured to receive data from these specific BLE gateways.
+*   **`paho-mqtt` library:** Used for MQTT client handling (subscription and publishing).
+*   **`ezdxf` library:** For parsing DXF AutoCAD files for floor plan integration.
+*   **Plotly:** For interactive data visualization in the UI (e.g., live tracking).
+*   **Google Fonts (Inter):** For consistent typography.

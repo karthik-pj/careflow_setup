@@ -1103,16 +1103,35 @@ def render_gateway_planning():
             with col_add4:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("Add Gateway", type="primary", key="add_gw"):
-                    new_planned_gw = PlannedGateway(
-                        plan_id=current_plan.id,
-                        name=new_gw_name,
-                        x_position=float(new_gw_x),
-                        y_position=float(new_gw_y)
-                    )
-                    session.add(new_planned_gw)
-                    session.commit()
-                    st.success(f"Added {new_gw_name}")
-                    st.rerun()
+                    position_valid = True
+                    zone_name_matched = None
+                    
+                    if coverage_zones:
+                        position_valid = False
+                        for cz in coverage_zones:
+                            try:
+                                coords = json.loads(cz.polygon_coords)
+                                if coords and point_in_polygon(float(new_gw_x), float(new_gw_y), coords):
+                                    position_valid = True
+                                    zone_name_matched = cz.name
+                                    break
+                            except Exception:
+                                continue
+                    
+                    if position_valid:
+                        new_planned_gw = PlannedGateway(
+                            plan_id=current_plan.id,
+                            name=new_gw_name,
+                            x_position=float(new_gw_x),
+                            y_position=float(new_gw_y)
+                        )
+                        session.add(new_planned_gw)
+                        session.commit()
+                        zone_msg = f" (in {zone_name_matched})" if zone_name_matched else ""
+                        st.success(f"Added {new_gw_name}{zone_msg}")
+                        st.rerun()
+                    else:
+                        st.error("Position is outside all coverage zones. Gateways must be placed within defined coverage areas.")
             
             suggestions = suggest_gateway_positions(
                 floor_width, floor_height, effective_recommendations["recommended"],
