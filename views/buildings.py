@@ -341,8 +341,8 @@ def render_floor_plans():
                 
                 dxf_file = st.file_uploader(
                     "Upload DXF Floor Plan*",
-                    type=['dxf'],
-                    help="Upload a DXF file from AutoCAD or similar CAD software",
+                    type=None,
+                    help="Upload a DXF file from AutoCAD or similar CAD software (.dxf extension)",
                     key="dxf_uploader"
                 )
                 
@@ -365,6 +365,8 @@ def render_floor_plans():
                         st.error("Please select a building")
                     elif not dxf_file:
                         st.error("Please upload a DXF file")
+                    elif not dxf_file.name.lower().endswith('.dxf'):
+                        st.error("Please upload a file with .dxf extension. For DWG files, export to DXF first.")
                     else:
                         try:
                             dxf_content = dxf_file.read()
