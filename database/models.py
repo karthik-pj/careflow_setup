@@ -56,6 +56,7 @@ class Floor(Base):
     positions = relationship("Position", back_populates="floor", cascade="all, delete-orphan")
     zones = relationship("Zone", back_populates="floor", cascade="all, delete-orphan")
     calibration_points = relationship("CalibrationPoint", back_populates="floor", cascade="all, delete-orphan")
+    coverage_zones = relationship("CoverageZone", back_populates="floor", cascade="all, delete-orphan")
 
 
 class Gateway(Base):
@@ -229,6 +230,25 @@ class CalibrationPoint(Base):
     is_verified = Column(Boolean, default=False)
     
     floor = relationship("Floor", back_populates="calibration_points")
+
+
+class CoverageZone(Base):
+    """Coverage zone for gateway planning - defines areas requiring positioning coverage"""
+    __tablename__ = 'coverage_zones'
+    
+    id = Column(Integer, primary_key=True)
+    floor_id = Column(Integer, ForeignKey('floors.id'), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    polygon_coords = Column(Text, nullable=False)
+    target_accuracy = Column(Float, default=1.0)
+    priority = Column(Integer, default=1)
+    color = Column(String(20), default='#2e5cbf')
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    floor = relationship("Floor", back_populates="coverage_zones")
 
 
 class GatewayPlan(Base):
