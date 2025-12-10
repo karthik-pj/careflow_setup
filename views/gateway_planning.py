@@ -608,6 +608,36 @@ def get_coverage_zone_bounds(zone):
     return None
 
 
+def calculate_gateways_for_zone(zone):
+    """Calculate how many gateways are needed for a coverage zone based on its target accuracy."""
+    bounds = get_coverage_zone_bounds(zone)
+    if not bounds:
+        return 3  # Default
+    
+    zone_area = bounds['width'] * bounds['height']
+    target_accuracy = zone.target_accuracy or 1.0
+    
+    # Use same logic as calculate_recommended_gateways
+    if target_accuracy <= 0.5:
+        min_gateways = 4
+    elif target_accuracy <= 1.0:
+        min_gateways = 3
+    elif target_accuracy <= 2.0:
+        min_gateways = 3
+    else:
+        min_gateways = 2
+    
+    # For small zones, fewer gateways may suffice
+    if zone_area < 50:  # Small zone < 50 sq meters
+        return max(2, min_gateways - 1)
+    elif zone_area < 200:  # Medium zone
+        return min_gateways
+    else:  # Large zone
+        # Add more gateways for larger areas
+        extra = int(zone_area / 200)
+        return min(min_gateways + extra, 8)
+
+
 def suggest_gateway_positions_for_zone(zone_bounds, num_gateways, signal_range=15.0):
     """Suggest gateway positions within a coverage zone polygon."""
     suggestions = []
@@ -1133,32 +1163,83 @@ def render_gateway_planning():
                     else:
                         st.error("Position is outside all coverage zones. Gateways must be placed within defined coverage areas.")
             
-            suggestions = suggest_gateway_positions(
-                floor_width, floor_height, effective_recommendations["recommended"],
-                signal_range=effective_signal_range, floor=selected_floor
-            )
-            if st.button(f"Auto-suggest {effective_recommendations['recommended']} gateway positions"):
-                existing_gws = session.query(PlannedGateway).filter(
-                    PlannedGateway.plan_id == current_plan.id
-                ).all()
-                added_count = 0
-                for suggestion in suggestions:
-                    exists = any(
-                        abs(pg.x_position - float(suggestion['x'])) < 1 and abs(pg.y_position - float(suggestion['y'])) < 1
-                        for pg in existing_gws
-                    )
-                    if not exists:
-                        new_planned_gw = PlannedGateway(
-                            plan_id=current_plan.id,
-                            name=suggestion['name'],
-                            x_position=float(suggestion['x']),
-                            y_position=float(suggestion['y'])
+            # Auto-suggest gateways based on coverage zones
+            if coverage_zones:
+                st.markdown("**Auto-suggest by Coverage Zone**")
+                
+                # Show summary of zones and gateway requirements
+                total_suggested = 0
+                zone_gateway_counts = []
+                for cz in coverage_zones:
+                    gw_count = calculate_gateways_for_zone(cz)
+                    zone_gateway_counts.append((cz, gw_count))
+                    total_suggested += gw_count
+                
+                with st.expander("Zone Gateway Requirements", expanded=False):
+                    for cz, count in zone_gateway_counts:
+                        st.write(f"**{cz.name}** (±{cz.target_accuracy}m): {count} gateways")
+                
+                if st.button(f"Auto-suggest {total_suggested} gateways for all zones", type="primary"):
+                    existing_gws = session.query(PlannedGateway).filter(
+                        PlannedGateway.plan_id == current_plan.id
+                    ).all()
+                    added_count = 0
+                    gw_num = len(existing_gws) + 1
+                    
+                    for cz, num_gateways in zone_gateway_counts:
+                        zone_bounds = get_coverage_zone_bounds(cz)
+                        if zone_bounds:
+                            zone_suggestions = suggest_gateway_positions_for_zone(
+                                zone_bounds, num_gateways, signal_range=effective_signal_range
+                            )
+                            for i, suggestion in enumerate(zone_suggestions):
+                                exists = any(
+                                    abs(pg.x_position - float(suggestion['x'])) < 1 and abs(pg.y_position - float(suggestion['y'])) < 1
+                                    for pg in existing_gws
+                                )
+                                if not exists:
+                                    new_planned_gw = PlannedGateway(
+                                        plan_id=current_plan.id,
+                                        name=f"GW-{gw_num} ({cz.name})",
+                                        x_position=float(suggestion['x']),
+                                        y_position=float(suggestion['y'])
+                                    )
+                                    session.add(new_planned_gw)
+                                    existing_gws.append(new_planned_gw)
+                                    added_count += 1
+                                    gw_num += 1
+                    
+                    session.commit()
+                    st.success(f"Added {added_count} gateway positions across {len(coverage_zones)} zone(s)")
+                    st.rerun()
+            else:
+                # Fallback to floor-based suggestion if no coverage zones
+                suggestions = suggest_gateway_positions(
+                    floor_width, floor_height, effective_recommendations["recommended"],
+                    signal_range=effective_signal_range, floor=selected_floor
+                )
+                if st.button(f"Auto-suggest {effective_recommendations['recommended']} gateway positions"):
+                    existing_gws = session.query(PlannedGateway).filter(
+                        PlannedGateway.plan_id == current_plan.id
+                    ).all()
+                    added_count = 0
+                    for suggestion in suggestions:
+                        exists = any(
+                            abs(pg.x_position - float(suggestion['x'])) < 1 and abs(pg.y_position - float(suggestion['y'])) < 1
+                            for pg in existing_gws
                         )
-                        session.add(new_planned_gw)
-                        added_count += 1
-                session.commit()
-                st.success(f"Added {added_count} suggested gateway positions")
-                st.rerun()
+                        if not exists:
+                            new_planned_gw = PlannedGateway(
+                                plan_id=current_plan.id,
+                                name=suggestion['name'],
+                                x_position=float(suggestion['x']),
+                                y_position=float(suggestion['y'])
+                            )
+                            session.add(new_planned_gw)
+                            added_count += 1
+                    session.commit()
+                    st.success(f"Added {added_count} suggested gateway positions")
+                    st.rerun()
             
             if planned_gateways:
                 st.markdown("**Current Planned Gateways**")
