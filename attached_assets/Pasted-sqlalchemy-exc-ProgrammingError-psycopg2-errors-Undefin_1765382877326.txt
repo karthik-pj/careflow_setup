@@ -1,0 +1,50 @@
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.UndefinedColumn) column floors.focus_min_x does not exist LINE 1: ...ors_origin_x, floors.origin_y AS floors_origin_y, floors.foc... ^ [SQL: SELECT floors.id AS floors_id, floors.building_id AS floors_building_id, floors.floor_number AS floors_floor_number, floors.name AS floors_name, floors.floor_plan_image AS floors_floor_plan_image, floors.floor_plan_filename AS floors_floor_plan_filename, floors.floor_plan_geojson AS floors_floor_plan_geojson, floors.floor_plan_type AS floors_floor_plan_type, floors.width_meters AS floors_width_meters, floors.height_meters AS floors_height_meters, floors.origin_lat AS floors_origin_lat, floors.origin_lon AS floors_origin_lon, floors.origin_x AS floors_origin_x, floors.origin_y AS floors_origin_y, floors.focus_min_x AS floors_focus_min_x, floors.focus_max_x AS floors_focus_max_x, floors.focus_min_y AS floors_focus_min_y, floors.focus_max_y AS floors_focus_max_y, floors.created_at AS floors_created_at, floors.updated_at AS floors_updated_at FROM floors WHERE floors.building_id = %(building_id_1)s ORDER BY floors.floor_number] [parameters: {'building_id_1': 6}] (Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback:
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/streamlit/runtime/scriptrunner/exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+             ^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 669, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/app.py", line 395, in <module>
+    coverage_zones.show()
+File "/home/runner/workspace/views/coverage_zones.py", line 352, in show
+    render_coverage_zones_tab()
+File "/home/runner/workspace/views/coverage_zones.py", line 393, in render_coverage_zones_tab
+    ).order_by(Floor.floor_number).all()
+                                   ^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2704, in all
+    return self._iter().all()  # type: ignore
+           ^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)

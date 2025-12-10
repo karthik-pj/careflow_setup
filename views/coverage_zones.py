@@ -653,11 +653,23 @@ def render_coverage_zones_tab():
                     CoverageZone.is_active == True
                 ).all()
                 
-                if 'focus_area' not in st.session_state:
+                # Load focus area from database if available
+                if selected_floor.focus_min_x is not None:
+                    st.session_state['focus_area'] = {
+                        'x_min': selected_floor.focus_min_x,
+                        'x_max': selected_floor.focus_max_x,
+                        'y_min': selected_floor.focus_min_y,
+                        'y_max': selected_floor.focus_max_y
+                    }
+                    st.session_state['focus_x_min'] = selected_floor.focus_min_x
+                    st.session_state['focus_x_max'] = selected_floor.focus_max_x
+                    st.session_state['focus_y_min'] = selected_floor.focus_min_y
+                    st.session_state['focus_y_max'] = selected_floor.focus_max_y
+                elif 'focus_area' not in st.session_state:
                     st.session_state['focus_area'] = None
                 
                 with st.expander("🔍 Focus Area (set view bounds)", expanded=False):
-                    st.caption("Set specific view bounds to focus on a region. The chart will stay zoomed to this area.")
+                    st.caption("Set specific view bounds to focus on a region. This will be saved for Gateway Planning.")
                     
                     focus_col1, focus_col2 = st.columns(2)
                     with focus_col1:
@@ -673,8 +685,13 @@ def render_coverage_zones_tab():
                     
                     focus_btn_col1, focus_btn_col2, focus_btn_col3 = st.columns(3)
                     with focus_btn_col1:
-                        if st.button("Apply Focus", type="primary"):
+                        if st.button("Save Focus Area", type="primary"):
                             if focus_x_max > focus_x_min and focus_y_max > focus_y_min:
+                                selected_floor.focus_min_x = focus_x_min
+                                selected_floor.focus_max_x = focus_x_max
+                                selected_floor.focus_min_y = focus_y_min
+                                selected_floor.focus_max_y = focus_y_max
+                                session.commit()
                                 st.session_state['focus_area'] = {
                                     'x_min': focus_x_min, 'x_max': focus_x_max,
                                     'y_min': focus_y_min, 'y_max': focus_y_max
@@ -683,15 +700,23 @@ def render_coverage_zones_tab():
                                 st.session_state['focus_x_max'] = focus_x_max
                                 st.session_state['focus_y_min'] = focus_y_min
                                 st.session_state['focus_y_max'] = focus_y_max
+                                st.success("Focus area saved!")
                             else:
                                 st.error("Max must be greater than Min")
                     with focus_btn_col2:
-                        if st.button("Reset to Full"):
+                        if st.button("Clear Focus"):
+                            selected_floor.focus_min_x = None
+                            selected_floor.focus_max_x = None
+                            selected_floor.focus_min_y = None
+                            selected_floor.focus_max_y = None
+                            session.commit()
                             st.session_state['focus_area'] = None
                             st.session_state['focus_x_min'] = 0.0
                             st.session_state['focus_x_max'] = selected_floor.width_meters
                             st.session_state['focus_y_min'] = 0.0
                             st.session_state['focus_y_max'] = selected_floor.height_meters
+                            st.success("Focus area cleared")
+                            st.rerun()
                     with focus_btn_col3:
                         if zones and st.button("Focus on Zones"):
                             all_xs, all_ys = [], []
@@ -705,16 +730,24 @@ def render_coverage_zones_tab():
                                     pass
                             if all_xs and all_ys:
                                 margin = 2.0
+                                focus_x_min = max(0, min(all_xs) - margin)
+                                focus_x_max = min(selected_floor.width_meters, max(all_xs) + margin)
+                                focus_y_min = max(0, min(all_ys) - margin)
+                                focus_y_max = min(selected_floor.height_meters, max(all_ys) + margin)
+                                selected_floor.focus_min_x = focus_x_min
+                                selected_floor.focus_max_x = focus_x_max
+                                selected_floor.focus_min_y = focus_y_min
+                                selected_floor.focus_max_y = focus_y_max
+                                session.commit()
                                 st.session_state['focus_area'] = {
-                                    'x_min': max(0, min(all_xs) - margin),
-                                    'x_max': min(selected_floor.width_meters, max(all_xs) + margin),
-                                    'y_min': max(0, min(all_ys) - margin),
-                                    'y_max': min(selected_floor.height_meters, max(all_ys) + margin)
+                                    'x_min': focus_x_min, 'x_max': focus_x_max,
+                                    'y_min': focus_y_min, 'y_max': focus_y_max
                                 }
-                                st.session_state['focus_x_min'] = st.session_state['focus_area']['x_min']
-                                st.session_state['focus_x_max'] = st.session_state['focus_area']['x_max']
-                                st.session_state['focus_y_min'] = st.session_state['focus_area']['y_min']
-                                st.session_state['focus_y_max'] = st.session_state['focus_area']['y_max']
+                                st.session_state['focus_x_min'] = focus_x_min
+                                st.session_state['focus_x_max'] = focus_x_max
+                                st.session_state['focus_y_min'] = focus_y_min
+                                st.session_state['focus_y_max'] = focus_y_max
+                                st.success("Focus area set to zones bounds")
                     
                     if st.session_state.get('focus_area'):
                         fa = st.session_state['focus_area']

@@ -47,6 +47,10 @@ class Floor(Base):
     origin_lon = Column(Float)
     origin_x = Column(Float, default=0)
     origin_y = Column(Float, default=0)
+    focus_min_x = Column(Float)
+    focus_max_x = Column(Float)
+    focus_min_y = Column(Float)
+    focus_max_y = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
