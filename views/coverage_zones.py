@@ -885,6 +885,34 @@ def render_live_monitoring_tab():
                         st.warning(f"{alert['beacon']} {alert['type']}ed {alert['zone']}")
                 else:
                     st.info("No new zone transitions detected")
+            
+            st.divider()
+            st.subheader("Manage Alert Zones")
+            
+            existing_zones = session.query(Zone).filter(
+                Zone.floor_id == selected_floor_id
+            ).all()
+            
+            if existing_zones:
+                zone_to_delete = st.selectbox(
+                    "Select zone to delete",
+                    options=[z.name for z in existing_zones],
+                    key="zone_to_delete"
+                )
+                
+                if st.button("Delete Zone", type="secondary"):
+                    zone = session.query(Zone).filter(
+                        Zone.floor_id == selected_floor_id,
+                        Zone.name == zone_to_delete
+                    ).first()
+                    if zone:
+                        session.query(ZoneAlert).filter(ZoneAlert.zone_id == zone.id).delete()
+                        session.delete(zone)
+                        session.commit()
+                        st.success(f"Deleted zone '{zone_to_delete}' and its alerts")
+                        st.rerun()
+            else:
+                st.info("No alert zones on this floor")
         
         with col2:
             floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
