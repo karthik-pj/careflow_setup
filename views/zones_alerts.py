@@ -1,5 +1,5 @@
 import streamlit as st
-from database import get_db_session, Building, Floor, Gateway, Beacon, Position, Zone, ZoneAlert
+from database import get_db_session, Building, Floor, Gateway, Beacon, Position, Zone, ZoneAlert, CoverageZone
 from datetime import datetime, timedelta
 from io import BytesIO
 from PIL import Image
@@ -11,8 +11,34 @@ from utils.mqtt_publisher import get_mqtt_publisher
 
 
 def point_in_zone(x, y, zone):
-    """Check if a point is inside a zone rectangle"""
+    """Check if a point is inside a zone rectangle (legacy for Zone model)"""
     return zone.x_min <= x <= zone.x_max and zone.y_min <= y <= zone.y_max
+
+
+def point_in_polygon(x, y, polygon_coords):
+    """Check if a point is inside a polygon using ray casting algorithm"""
+    if isinstance(polygon_coords, str):
+        try:
+            polygon_coords = json.loads(polygon_coords)
+        except:
+            return False
+    
+    if not polygon_coords or len(polygon_coords) < 3:
+        return False
+    
+    n = len(polygon_coords)
+    inside = False
+    
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon_coords[i][0], polygon_coords[i][1]
+        xj, yj = polygon_coords[j][0], polygon_coords[j][1]
+        
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    
+    return inside
 
 
 def latlon_to_meters(lat, lon, origin_lat, origin_lon):
@@ -184,25 +210,59 @@ def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editabl
         has_floor_plan = render_geojson_floor_plan(fig, floor)
     
     for zone in zones:
-        fig.add_shape(
-            type="rect",
-            x0=zone.x_min,
-            y0=zone.y_min,
-            x1=zone.x_max,
-            y1=zone.y_max,
-            line=dict(color=zone.color, width=2),
-            fillcolor=zone.color,
-            opacity=0.3,
-            name=zone.name
-        )
-        
-        fig.add_annotation(
-            x=(zone.x_min + zone.x_max) / 2,
-            y=zone.y_max + 0.5,
-            text=zone.name,
-            showarrow=False,
-            font=dict(size=12, color=zone.color)
-        )
+        # Check if zone is a CoverageZone (polygon) or Zone (rectangle)
+        if hasattr(zone, 'polygon_coords') and zone.polygon_coords:
+            # Render as polygon
+            try:
+                coords = json.loads(zone.polygon_coords) if isinstance(zone.polygon_coords, str) else zone.polygon_coords
+                if coords and len(coords) >= 3:
+                    xs = [c[0] for c in coords] + [coords[0][0]]
+                    ys = [c[1] for c in coords] + [coords[0][1]]
+                    
+                    color = zone.color if zone.color else '#2e5cbf'
+                    fig.add_trace(go.Scatter(
+                        x=xs, y=ys,
+                        fill='toself',
+                        fillcolor=color.replace('#', 'rgba(') + ',0.25)' if color.startswith('#') else f'rgba(46,92,191,0.25)',
+                        line=dict(color=color, width=2),
+                        mode='lines',
+                        name=zone.name,
+                        showlegend=False,
+                        hovertemplate=f'{zone.name}<extra></extra>'
+                    ))
+                    
+                    center_x = sum([c[0] for c in coords]) / len(coords)
+                    center_y = sum([c[1] for c in coords]) / len(coords)
+                    fig.add_annotation(
+                        x=center_x,
+                        y=center_y,
+                        text=zone.name,
+                        showarrow=False,
+                        font=dict(size=11, color=color)
+                    )
+            except:
+                pass
+        else:
+            # Render as rectangle (legacy Zone model)
+            fig.add_shape(
+                type="rect",
+                x0=zone.x_min,
+                y0=zone.y_min,
+                x1=zone.x_max,
+                y1=zone.y_max,
+                line=dict(color=zone.color, width=2),
+                fillcolor=zone.color,
+                opacity=0.3,
+                name=zone.name
+            )
+            
+            fig.add_annotation(
+                x=(zone.x_min + zone.x_max) / 2,
+                y=zone.y_max + 0.5,
+                text=zone.name,
+                showarrow=False,
+                font=dict(size=12, color=zone.color)
+            )
     
     if new_zone:
         fig.add_shape(
@@ -296,10 +356,10 @@ def get_zones_figure(floor, zones, gateways_data, beacon_positions=None, editabl
 
 
 def check_zone_transitions(session, floor_id):
-    """Check for beacon zone entry/exit events"""
-    zones = session.query(Zone).filter(
-        Zone.floor_id == floor_id,
-        Zone.is_active == True
+    """Check for beacon zone entry/exit events using CoverageZone polygons"""
+    zones = session.query(CoverageZone).filter(
+        CoverageZone.floor_id == floor_id,
+        CoverageZone.is_active == True
     ).all()
     
     if not zones:
@@ -324,90 +384,56 @@ def check_zone_transitions(session, floor_id):
         prev_pos = positions[1]
         
         for zone in zones:
-            was_in_zone = point_in_zone(prev_pos.x_position, prev_pos.y_position, zone)
-            is_in_zone = point_in_zone(current_pos.x_position, current_pos.y_position, zone)
+            was_in_zone = point_in_polygon(prev_pos.x_position, prev_pos.y_position, zone.polygon_coords)
+            is_in_zone = point_in_polygon(current_pos.x_position, current_pos.y_position, zone.polygon_coords)
             
             if not was_in_zone and is_in_zone and zone.alert_on_enter:
-                existing = session.query(ZoneAlert).filter(
-                    ZoneAlert.zone_id == zone.id,
-                    ZoneAlert.beacon_id == beacon.id,
-                    ZoneAlert.alert_type == 'enter',
-                    ZoneAlert.timestamp >= thirty_seconds_ago
-                ).first()
+                alerts.append({
+                    'type': 'enter',
+                    'zone': zone.name,
+                    'beacon': beacon.name,
+                    'time': datetime.utcnow()
+                })
                 
-                if not existing:
-                    alert = ZoneAlert(
-                        zone_id=zone.id,
-                        beacon_id=beacon.id,
+                publisher = get_mqtt_publisher()
+                if publisher.is_connected():
+                    floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
+                    floor_name = floor.name if floor else ""
+                    publisher.publish_alert(
                         alert_type='enter',
-                        x_position=current_pos.x_position,
-                        y_position=current_pos.y_position,
-                        timestamp=datetime.utcnow()
+                        beacon_mac=beacon.mac_address,
+                        beacon_name=beacon.name,
+                        zone_id=zone.id,
+                        zone_name=zone.name,
+                        floor_name=floor_name,
+                        x=current_pos.x_position,
+                        y=current_pos.y_position,
+                        resource_type=beacon.resource_type
                     )
-                    session.add(alert)
-                    alerts.append({
-                        'type': 'enter',
-                        'zone': zone.name,
-                        'beacon': beacon.name,
-                        'time': datetime.utcnow()
-                    })
-                    
-                    publisher = get_mqtt_publisher()
-                    if publisher.is_connected():
-                        floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
-                        floor_name = floor.name if floor else ""
-                        publisher.publish_alert(
-                            alert_type='enter',
-                            beacon_mac=beacon.mac_address,
-                            beacon_name=beacon.name,
-                            zone_id=zone.id,
-                            zone_name=zone.name,
-                            floor_name=floor_name,
-                            x=current_pos.x_position,
-                            y=current_pos.y_position,
-                            resource_type=beacon.resource_type
-                        )
             
             elif was_in_zone and not is_in_zone and zone.alert_on_exit:
-                existing = session.query(ZoneAlert).filter(
-                    ZoneAlert.zone_id == zone.id,
-                    ZoneAlert.beacon_id == beacon.id,
-                    ZoneAlert.alert_type == 'exit',
-                    ZoneAlert.timestamp >= thirty_seconds_ago
-                ).first()
+                alerts.append({
+                    'type': 'exit',
+                    'zone': zone.name,
+                    'beacon': beacon.name,
+                    'time': datetime.utcnow()
+                })
                 
-                if not existing:
-                    alert = ZoneAlert(
-                        zone_id=zone.id,
-                        beacon_id=beacon.id,
+                publisher = get_mqtt_publisher()
+                if publisher.is_connected():
+                    floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
+                    floor_name = floor.name if floor else ""
+                    publisher.publish_alert(
                         alert_type='exit',
-                        x_position=current_pos.x_position,
-                        y_position=current_pos.y_position,
-                        timestamp=datetime.utcnow()
+                        beacon_mac=beacon.mac_address,
+                        beacon_name=beacon.name,
+                        zone_id=zone.id,
+                        zone_name=zone.name,
+                        floor_name=floor_name,
+                        x=current_pos.x_position,
+                        y=current_pos.y_position,
+                        resource_type=beacon.resource_type
                     )
-                    session.add(alert)
-                    alerts.append({
-                        'type': 'exit',
-                        'zone': zone.name,
-                        'beacon': beacon.name,
-                        'time': datetime.utcnow()
-                    })
-                    
-                    publisher = get_mqtt_publisher()
-                    if publisher.is_connected():
-                        floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
-                        floor_name = floor.name if floor else ""
-                        publisher.publish_alert(
-                            alert_type='exit',
-                            beacon_mac=beacon.mac_address,
-                            beacon_name=beacon.name,
-                            zone_id=zone.id,
-                            zone_name=zone.name,
-                            floor_name=floor_name,
-                            x=current_pos.x_position,
-                            y=current_pos.y_position,
-                            resource_type=beacon.resource_type
-                        )
     
     return alerts
 
@@ -785,9 +811,10 @@ def render_live_monitoring():
         with col2:
             floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
             
-            zones = session.query(Zone).filter(
-                Zone.floor_id == selected_floor_id,
-                Zone.is_active == True
+            # Use CoverageZone (polygons) instead of Zone (rectangles)
+            zones = session.query(CoverageZone).filter(
+                CoverageZone.floor_id == selected_floor_id,
+                CoverageZone.is_active == True
             ).all()
             
             gateways = session.query(Gateway).filter(
@@ -826,7 +853,7 @@ def render_live_monitoring():
                 for zone in zones:
                     beacons_in_zone = []
                     for beacon_name, pos in beacon_positions.items():
-                        if point_in_zone(pos['x'], pos['y'], zone):
+                        if point_in_polygon(pos['x'], pos['y'], zone.polygon_coords):
                             beacons_in_zone.append(beacon_name)
                     
                     if beacons_in_zone:
@@ -834,7 +861,7 @@ def render_live_monitoring():
                     else:
                         st.write(f"**{zone.name}:** Empty")
             elif not zones:
-                st.info("No zones defined for this floor.")
+                st.info("No zones defined for this floor. Create zones in Coverage Zones.")
             else:
                 st.info("No beacons currently tracked on this floor.")
             

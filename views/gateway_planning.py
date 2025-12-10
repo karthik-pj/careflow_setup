@@ -1048,11 +1048,19 @@ def render_gateway_planning():
                         hovertemplate='<b>%{text}</b><br>Position: (%{x:.1f}m, %{y:.1f}m)<br>ACTIVE<extra></extra>'
                     ))
                 
+                # Use focus area from database if set, otherwise show full floor
+                if selected_floor.focus_min_x is not None:
+                    x_range = [selected_floor.focus_min_x - 1, selected_floor.focus_max_x + 1]
+                    y_range = [selected_floor.focus_min_y - 1, selected_floor.focus_max_y + 1]
+                else:
+                    x_range = [-2, floor_width + 2]
+                    y_range = [-2, floor_height + 2]
+                
                 fig.update_layout(
                     height=600,
                     xaxis=dict(
                         title="X (meters)",
-                        range=[-2, floor_width + 2],
+                        range=x_range,
                         scaleanchor="y",
                         scaleratio=1,
                         showgrid=not has_floor_plan,
@@ -1062,7 +1070,7 @@ def render_gateway_planning():
                     ),
                     yaxis=dict(
                         title="Y (meters)",
-                        range=[-2, floor_height + 2],
+                        range=y_range,
                         showgrid=not has_floor_plan,
                         gridwidth=1,
                         gridcolor='rgba(0,0,0,0.1)',
@@ -1083,8 +1091,14 @@ def render_gateway_planning():
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
+                # Show focus area indicator
+                if selected_floor.focus_min_x is not None:
+                    fa_width = selected_floor.focus_max_x - selected_floor.focus_min_x
+                    fa_height = selected_floor.focus_max_y - selected_floor.focus_min_y
+                    st.caption(f"🔍 **Focus Area active**: X [{selected_floor.focus_min_x:.1f} - {selected_floor.focus_max_x:.1f}], Y [{selected_floor.focus_min_y:.1f} - {selected_floor.focus_max_y:.1f}] ({fa_width:.1f}m x {fa_height:.1f}m) - Set in Coverage Zones")
+                
                 if coverage_zones:
-                    st.info(f"📍 **{len(coverage_zones)} coverage zone(s) defined** - Gateways will be placed within these areas. [Manage zones →](Coverage Zones)")
+                    st.info(f"📍 **{len(coverage_zones)} coverage zone(s) defined** - Gateways will be placed within these areas.")
                 else:
                     st.caption("💡 Tip: Define coverage zones to specify which areas need positioning. Go to **Coverage Zones** in the sidebar.")
                 

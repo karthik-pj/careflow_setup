@@ -237,7 +237,7 @@ class CalibrationPoint(Base):
 
 
 class CoverageZone(Base):
-    """Coverage zone for gateway planning - defines areas requiring positioning coverage"""
+    """Coverage zone for gateway planning and geofencing - defines polygonal areas"""
     __tablename__ = 'coverage_zones'
     
     id = Column(Integer, primary_key=True)
@@ -249,6 +249,8 @@ class CoverageZone(Base):
     priority = Column(Integer, default=1)
     color = Column(String(20), default='#2e5cbf')
     is_active = Column(Boolean, default=True)
+    alert_on_enter = Column(Boolean, default=True)
+    alert_on_exit = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
