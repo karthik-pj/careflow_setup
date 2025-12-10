@@ -221,6 +221,13 @@ def show():
     st.title("Coverage Zone Editor")
     st.write("Define coverage areas on floor plans for gateway planning. Gateways will only be placed within defined zones.")
     
+    if 'drawing_vertices' not in st.session_state:
+        st.session_state.drawing_vertices = []
+    if 'drawing_mode' not in st.session_state:
+        st.session_state.drawing_mode = False
+    if 'viewport_bounds' not in st.session_state:
+        st.session_state.viewport_bounds = None
+    
     with get_db_session() as session:
         buildings = session.query(Building).order_by(Building.name).all()
         
@@ -298,45 +305,94 @@ def show():
                 
                 zone_creation_method = st.radio(
                     "Creation Method",
-                    ["Use Building Footprint", "Use Full Floor", "Manual Coordinates"],
-                    horizontal=True,
-                    help="Choose how to define the zone boundaries"
+                    ["Draw on Floor Plan", "Use Current Viewport", "Use Building Footprint", "Use Full Floor"],
+                    horizontal=False,
+                    help="Choose how to define the zone boundaries",
+                    key="zone_creation_method"
                 )
                 
-                with st.form("add_zone_form"):
-                    zone_name = st.text_input("Zone Name*", placeholder="e.g., Main Area, Operating Room")
-                    zone_description = st.text_area("Description", placeholder="Optional description")
+                prev_method = st.session_state.get('prev_creation_method')
+                if prev_method and prev_method != zone_creation_method:
+                    st.session_state.drawing_vertices = []
+                    st.session_state['pending_polygon'] = None
+                    st.session_state['use_viewport'] = False
+                    st.session_state['viewport_bounds'] = None
+                st.session_state['prev_creation_method'] = zone_creation_method
+                
+                if zone_creation_method == "Draw on Floor Plan":
+                    st.info("📍 **Click on the floor plan** to place polygon vertices. Add at least 3 points, then click 'Complete Polygon'.")
                     
-                    col_acc, col_pri = st.columns(2)
-                    with col_acc:
-                        target_accuracy = st.select_slider(
-                            "Target Accuracy",
-                            options=[0.5, 1.0, 2.0, 3.0, 5.0],
-                            value=1.0,
-                            format_func=lambda x: f"±{x}m"
-                        )
-                    with col_pri:
-                        priority = st.number_input("Priority", min_value=1, max_value=10, value=1, help="Higher priority zones take precedence")
+                    if st.session_state.drawing_vertices:
+                        st.write(f"**Vertices placed:** {len(st.session_state.drawing_vertices)}")
+                        for i, v in enumerate(st.session_state.drawing_vertices):
+                            st.caption(f"Point {i+1}: ({v[0]:.1f}, {v[1]:.1f})")
                     
-                    zone_color = st.color_picker("Zone Color", value="#2e5cbf")
+                    col_draw1, col_draw2, col_draw3 = st.columns(3)
+                    with col_draw1:
+                        if st.button("Undo Last", disabled=len(st.session_state.drawing_vertices) == 0):
+                            st.session_state.drawing_vertices.pop()
+                            st.rerun()
+                    with col_draw2:
+                        if st.button("Clear All", disabled=len(st.session_state.drawing_vertices) == 0):
+                            st.session_state.drawing_vertices = []
+                            st.rerun()
+                    with col_draw3:
+                        can_complete = len(st.session_state.drawing_vertices) >= 3
+                        complete_btn = st.button("Complete Polygon", type="primary", disabled=not can_complete)
                     
-                    if zone_creation_method == "Manual Coordinates":
-                        coords_input = st.text_area(
-                            "Polygon Coordinates (JSON)",
-                            placeholder='[[0, 0], [10, 0], [10, 10], [0, 10]]',
-                            help="Enter coordinates as a JSON array of [x, y] points"
-                        )
-                    else:
-                        coords_input = None
+                    if can_complete and complete_btn:
+                        st.session_state['pending_polygon'] = st.session_state.drawing_vertices.copy()
+                        st.session_state.drawing_vertices = []
+                
+                elif zone_creation_method == "Use Current Viewport":
+                    st.info("📐 Enter the viewport bounds to define a rectangular zone.")
                     
-                    submitted = st.form_submit_button("Create Zone", type="primary")
+                    col_vp1, col_vp2 = st.columns(2)
+                    with col_vp1:
+                        vp_x_min = st.number_input("X Min (m)", min_value=0.0, max_value=float(selected_floor.width_meters), value=0.0, key="vp_x_min")
+                        vp_y_min = st.number_input("Y Min (m)", min_value=0.0, max_value=float(selected_floor.height_meters), value=0.0, key="vp_y_min")
+                    with col_vp2:
+                        vp_x_max = st.number_input("X Max (m)", min_value=0.0, max_value=float(selected_floor.width_meters), value=float(selected_floor.width_meters), key="vp_x_max")
+                        vp_y_max = st.number_input("Y Max (m)", min_value=0.0, max_value=float(selected_floor.height_meters), value=float(selected_floor.height_meters), key="vp_y_max")
                     
-                    if submitted:
+                    if st.button("Set Viewport Bounds", type="primary"):
+                        if vp_x_max > vp_x_min and vp_y_max > vp_y_min:
+                            st.session_state['use_viewport'] = True
+                            st.session_state['viewport_bounds'] = {
+                                'x_min': vp_x_min,
+                                'x_max': vp_x_max,
+                                'y_min': vp_y_min,
+                                'y_max': vp_y_max
+                            }
+                            st.rerun()
+                        else:
+                            st.error("Max values must be greater than min values.")
+                
+                zone_name = st.text_input("Zone Name*", placeholder="e.g., Main Area, Operating Room")
+                zone_description = st.text_area("Description", placeholder="Optional description", height=68)
+                
+                col_acc, col_pri = st.columns(2)
+                with col_acc:
+                    target_accuracy = st.select_slider(
+                        "Target Accuracy",
+                        options=[0.5, 1.0, 2.0, 3.0, 5.0],
+                        value=1.0,
+                        format_func=lambda x: f"±{x}m"
+                    )
+                with col_pri:
+                    priority = st.number_input("Priority", min_value=1, max_value=10, value=1, help="Higher priority zones take precedence")
+                
+                zone_color = st.color_picker("Zone Color", value="#2e5cbf")
+                
+                pending_polygon = st.session_state.get('pending_polygon')
+                use_viewport = st.session_state.get('use_viewport')
+                viewport_bounds = st.session_state.get('viewport_bounds')
+                
+                if zone_creation_method in ["Use Building Footprint", "Use Full Floor"]:
+                    if st.button("Create Zone", type="primary"):
                         if not zone_name:
                             st.error("Please enter a zone name")
                         else:
-                            polygon_coords = None
-                            
                             if zone_creation_method == "Use Building Footprint":
                                 footprint = extract_building_footprint(selected_floor)
                                 if footprint:
@@ -349,8 +405,7 @@ def show():
                                         [0, selected_floor.height_meters],
                                         [0, 0]
                                     ])
-                            
-                            elif zone_creation_method == "Use Full Floor":
+                            else:
                                 polygon_coords = json.dumps([
                                     [0, 0],
                                     [selected_floor.width_meters, 0],
@@ -359,34 +414,78 @@ def show():
                                     [0, 0]
                                 ])
                             
-                            elif zone_creation_method == "Manual Coordinates":
-                                if coords_input:
-                                    try:
-                                        coords = json.loads(coords_input)
-                                        if isinstance(coords, list) and len(coords) >= 3:
-                                            polygon_coords = json.dumps(coords)
-                                        else:
-                                            st.error("Invalid coordinates. Need at least 3 points.")
-                                    except json.JSONDecodeError:
-                                        st.error("Invalid JSON format for coordinates")
-                                else:
-                                    st.error("Please enter polygon coordinates")
-                            
-                            if polygon_coords:
-                                new_zone = CoverageZone(
-                                    floor_id=selected_floor.id,
-                                    name=zone_name,
-                                    description=zone_description,
-                                    polygon_coords=polygon_coords,
-                                    target_accuracy=target_accuracy,
-                                    priority=priority,
-                                    color=zone_color,
-                                    is_active=True
-                                )
-                                session.add(new_zone)
-                                session.commit()
-                                st.success(f"Created zone '{zone_name}'")
-                                st.rerun()
+                            new_zone = CoverageZone(
+                                floor_id=selected_floor.id,
+                                name=zone_name,
+                                description=zone_description,
+                                polygon_coords=polygon_coords,
+                                target_accuracy=target_accuracy,
+                                priority=priority,
+                                color=zone_color,
+                                is_active=True
+                            )
+                            session.add(new_zone)
+                            session.commit()
+                            st.success(f"Created zone '{zone_name}'")
+                            st.rerun()
+                
+                elif pending_polygon:
+                    st.success(f"Polygon ready with {len(pending_polygon)} vertices!")
+                    if st.button("Save Zone", type="primary"):
+                        if not zone_name:
+                            st.error("Please enter a zone name")
+                        else:
+                            closed_polygon = pending_polygon.copy()
+                            if closed_polygon[0] != closed_polygon[-1]:
+                                closed_polygon.append(closed_polygon[0])
+                            polygon_coords = json.dumps(closed_polygon)
+                            new_zone = CoverageZone(
+                                floor_id=selected_floor.id,
+                                name=zone_name,
+                                description=zone_description,
+                                polygon_coords=polygon_coords,
+                                target_accuracy=target_accuracy,
+                                priority=priority,
+                                color=zone_color,
+                                is_active=True
+                            )
+                            session.add(new_zone)
+                            session.commit()
+                            st.session_state['pending_polygon'] = None
+                            st.success(f"Created zone '{zone_name}'")
+                            st.rerun()
+                
+                elif use_viewport and viewport_bounds:
+                    x_min, x_max = viewport_bounds.get('x_min', 0), viewport_bounds.get('x_max', selected_floor.width_meters)
+                    y_min, y_max = viewport_bounds.get('y_min', 0), viewport_bounds.get('y_max', selected_floor.height_meters)
+                    st.success(f"Viewport captured: ({x_min:.1f}, {y_min:.1f}) to ({x_max:.1f}, {y_max:.1f})")
+                    if st.button("Save Zone from Viewport", type="primary"):
+                        if not zone_name:
+                            st.error("Please enter a zone name")
+                        else:
+                            polygon_coords = json.dumps([
+                                [x_min, y_min],
+                                [x_max, y_min],
+                                [x_max, y_max],
+                                [x_min, y_max],
+                                [x_min, y_min]
+                            ])
+                            new_zone = CoverageZone(
+                                floor_id=selected_floor.id,
+                                name=zone_name,
+                                description=zone_description,
+                                polygon_coords=polygon_coords,
+                                target_accuracy=target_accuracy,
+                                priority=priority,
+                                color=zone_color,
+                                is_active=True
+                            )
+                            session.add(new_zone)
+                            session.commit()
+                            st.session_state['use_viewport'] = False
+                            st.session_state['viewport_bounds'] = None
+                            st.success(f"Created zone '{zone_name}'")
+                            st.rerun()
         
         with col2:
             st.subheader("Floor Plan Preview")
@@ -412,6 +511,46 @@ def show():
                 
                 if zones:
                     render_coverage_zones(fig, zones)
+                
+                drawing_vertices = st.session_state.get('drawing_vertices', [])
+                if drawing_vertices:
+                    xs = [v[0] for v in drawing_vertices]
+                    ys = [v[1] for v in drawing_vertices]
+                    
+                    fig.add_trace(go.Scatter(
+                        x=xs, y=ys,
+                        mode='markers+lines',
+                        marker=dict(size=12, color='#ff6b35', symbol='circle'),
+                        line=dict(color='#ff6b35', width=2, dash='dash'),
+                        name='Drawing',
+                        hovertemplate='Point %{pointNumber+1}<br>(%{x:.1f}, %{y:.1f})<extra></extra>'
+                    ))
+                    
+                    if len(drawing_vertices) >= 3:
+                        fig.add_trace(go.Scatter(
+                            x=xs + [xs[0]], y=ys + [ys[0]],
+                            fill='toself',
+                            fillcolor='rgba(255, 107, 53, 0.15)',
+                            line=dict(color='rgba(255, 107, 53, 0.5)', width=1, dash='dot'),
+                            mode='lines',
+                            name='Preview',
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ))
+                
+                pending_polygon = st.session_state.get('pending_polygon')
+                if pending_polygon:
+                    xs = [v[0] for v in pending_polygon]
+                    ys = [v[1] for v in pending_polygon]
+                    fig.add_trace(go.Scatter(
+                        x=xs + [xs[0]], y=ys + [ys[0]],
+                        fill='toself',
+                        fillcolor='rgba(46, 191, 92, 0.2)',
+                        line=dict(color='#2ebf5c', width=3),
+                        mode='lines',
+                        name='Completed Polygon',
+                        hovertemplate='Completed polygon ready to save<extra></extra>'
+                    ))
                 
                 fig.update_layout(
                     height=600,
@@ -440,10 +579,35 @@ def show():
                         x=1
                     ),
                     margin=dict(l=50, r=50, t=50, b=50),
-                    plot_bgcolor='rgba(255,255,255,0.9)'
+                    plot_bgcolor='rgba(255,255,255,0.9)',
+                    clickmode='event'
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                click_events = plotly_events(
+                    fig, 
+                    click_event=True, 
+                    select_event=False,
+                    key="floor_plan_click"
+                )
+                
+                current_mode = st.session_state.get('zone_creation_method', 'Use Building Footprint')
+                if current_mode == "Draw on Floor Plan" and click_events and len(click_events) > 0:
+                    click_data = click_events[0]
+                    x_clicked = click_data.get('x')
+                    y_clicked = click_data.get('y')
+                    
+                    if x_clicked is not None and y_clicked is not None:
+                        x_clicked = round(float(x_clicked), 2)
+                        y_clicked = round(float(y_clicked), 2)
+                        
+                        is_duplicate = any(
+                            abs(v[0] - x_clicked) < 0.5 and abs(v[1] - y_clicked) < 0.5
+                            for v in st.session_state.drawing_vertices
+                        )
+                        
+                        if not is_duplicate:
+                            st.session_state.drawing_vertices.append([x_clicked, y_clicked])
+                            st.rerun()
                 
                 st.caption(f"Floor dimensions: {selected_floor.width_meters:.1f}m × {selected_floor.height_meters:.1f}m")
                 
