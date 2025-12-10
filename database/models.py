@@ -60,7 +60,7 @@ class Floor(Base):
     
     building = relationship("Building", back_populates="floors")
     gateways = relationship("Gateway", back_populates="floor", cascade="all, delete-orphan")
-    beacons = relationship("Beacon", back_populates="floor", cascade="all, delete-orphan", foreign_keys="[Beacon.floor_id]")
+    beacons = relationship("Beacon", back_populates="floor", cascade="all, delete-orphan", primaryjoin="Floor.id==Beacon.floor_id")
     positions = relationship("Position", back_populates="floor", cascade="all, delete-orphan")
     zones = relationship("Zone", back_populates="floor", cascade="all, delete-orphan")
     calibration_points = relationship("CalibrationPoint", back_populates="floor", cascade="all, delete-orphan")
