@@ -5,7 +5,9 @@ from PIL import Image
 from io import BytesIO
 import base64
 import numpy as np
-from database import get_db_session, Floor, Building, CoverageZone
+from datetime import datetime, timedelta
+from database import get_db_session, Floor, Building, CoverageZone, Zone, ZoneAlert, Beacon, Position, Gateway
+from utils.mqtt_publisher import get_mqtt_publisher
 
 
 def latlon_to_meters(lat, lon, origin_lat, origin_lon):
@@ -216,10 +218,148 @@ def render_coverage_zones(fig, zones):
             pass
 
 
-def show():
-    st.title("Coverage Zone Editor")
-    st.write("Define coverage areas on floor plans for gateway planning. Gateways will only be placed within defined zones.")
+def point_in_zone(x, y, zone):
+    """Check if a point is inside a zone rectangle"""
+    return zone.x_min <= x <= zone.x_max and zone.y_min <= y <= zone.y_max
+
+
+def check_zone_transitions(session, floor_id):
+    """Check for beacon zone entry/exit events"""
+    zones = session.query(Zone).filter(
+        Zone.floor_id == floor_id,
+        Zone.is_active == True
+    ).all()
     
+    if not zones:
+        return []
+    
+    alerts = []
+    thirty_seconds_ago = datetime.utcnow() - timedelta(seconds=30)
+    
+    beacons = session.query(Beacon).filter(Beacon.is_active == True).all()
+    
+    for beacon in beacons:
+        positions = session.query(Position).filter(
+            Position.beacon_id == beacon.id,
+            Position.floor_id == floor_id,
+            Position.timestamp >= thirty_seconds_ago
+        ).order_by(Position.timestamp.desc()).limit(2).all()
+        
+        if len(positions) < 2:
+            continue
+        
+        current_pos = positions[0]
+        prev_pos = positions[1]
+        
+        for zone in zones:
+            was_in_zone = point_in_zone(prev_pos.x_position, prev_pos.y_position, zone)
+            is_in_zone = point_in_zone(current_pos.x_position, current_pos.y_position, zone)
+            
+            if not was_in_zone and is_in_zone and zone.alert_on_enter:
+                existing = session.query(ZoneAlert).filter(
+                    ZoneAlert.zone_id == zone.id,
+                    ZoneAlert.beacon_id == beacon.id,
+                    ZoneAlert.alert_type == 'enter',
+                    ZoneAlert.timestamp >= thirty_seconds_ago
+                ).first()
+                
+                if not existing:
+                    alert = ZoneAlert(
+                        zone_id=zone.id,
+                        beacon_id=beacon.id,
+                        alert_type='enter',
+                        x_position=current_pos.x_position,
+                        y_position=current_pos.y_position,
+                        timestamp=datetime.utcnow()
+                    )
+                    session.add(alert)
+                    session.commit()
+                    alerts.append({
+                        'type': 'enter',
+                        'zone': zone.name,
+                        'beacon': beacon.name,
+                        'time': datetime.utcnow()
+                    })
+                    
+                    publisher = get_mqtt_publisher()
+                    if publisher.is_connected():
+                        floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
+                        floor_name = floor.name if floor else ""
+                        publisher.publish_alert(
+                            alert_type='enter',
+                            beacon_mac=beacon.mac_address,
+                            beacon_name=beacon.name,
+                            zone_id=zone.id,
+                            zone_name=zone.name,
+                            floor_name=floor_name,
+                            x=current_pos.x_position,
+                            y=current_pos.y_position,
+                            resource_type=beacon.resource_type
+                        )
+            
+            elif was_in_zone and not is_in_zone and zone.alert_on_exit:
+                existing = session.query(ZoneAlert).filter(
+                    ZoneAlert.zone_id == zone.id,
+                    ZoneAlert.beacon_id == beacon.id,
+                    ZoneAlert.alert_type == 'exit',
+                    ZoneAlert.timestamp >= thirty_seconds_ago
+                ).first()
+                
+                if not existing:
+                    alert = ZoneAlert(
+                        zone_id=zone.id,
+                        beacon_id=beacon.id,
+                        alert_type='exit',
+                        x_position=current_pos.x_position,
+                        y_position=current_pos.y_position,
+                        timestamp=datetime.utcnow()
+                    )
+                    session.add(alert)
+                    session.commit()
+                    alerts.append({
+                        'type': 'exit',
+                        'zone': zone.name,
+                        'beacon': beacon.name,
+                        'time': datetime.utcnow()
+                    })
+                    
+                    publisher = get_mqtt_publisher()
+                    if publisher.is_connected():
+                        floor = session.query(Floor).filter(Floor.id == zone.floor_id).first()
+                        floor_name = floor.name if floor else ""
+                        publisher.publish_alert(
+                            alert_type='exit',
+                            beacon_mac=beacon.mac_address,
+                            beacon_name=beacon.name,
+                            zone_id=zone.id,
+                            zone_name=zone.name,
+                            floor_name=floor_name,
+                            x=current_pos.x_position,
+                            y=current_pos.y_position,
+                            resource_type=beacon.resource_type
+                        )
+    
+    return alerts
+
+
+def show():
+    st.title("Coverage Zones & Alerts")
+    st.write("Define coverage areas and manage geofencing alerts for beacon tracking.")
+    
+    tab1, tab2, tab3 = st.tabs(["Coverage Zones", "Live Monitoring", "Alert History"])
+    
+    with tab1:
+        render_coverage_zones_tab()
+    
+    with tab2:
+        render_live_monitoring_tab()
+    
+    with tab3:
+        render_alert_history_tab()
+
+
+def render_coverage_zones_tab():
+    """Render the coverage zones management tab"""
     if 'drawing_vertices' not in st.session_state:
         st.session_state.drawing_vertices = []
     if 'drawing_mode' not in st.session_state:
@@ -433,9 +573,7 @@ def show():
                                 target_accuracy=target_accuracy,
                                 priority=priority,
                                 color=zone_color,
-                                is_active=True,
-                                alert_on_enter=alert_on_enter,
-                                alert_on_exit=alert_on_exit
+                                is_active=True
                             )
                             session.add(new_zone)
                             session.commit()
@@ -708,6 +846,239 @@ def show():
                     st.info("No coverage zones defined. Gateways will be placed based on floor boundaries.")
             else:
                 st.info("Select a building and floor to view the floor plan.")
+
+
+def render_live_monitoring_tab():
+    """Render the live zone monitoring tab"""
+    with get_db_session() as session:
+        buildings = session.query(Building).all()
+        if not buildings:
+            st.warning("No buildings configured.")
+            return
+        
+        col1, col2 = st.columns([1, 3])
+        
+        with col1:
+            st.subheader("Settings")
+            
+            building_options = {b.name: b.id for b in buildings}
+            selected_building = st.selectbox("Building", options=list(building_options.keys()), key="monitor_building")
+            
+            floors = session.query(Floor).filter(
+                Floor.building_id == building_options[selected_building]
+            ).order_by(Floor.floor_number).all()
+            
+            if not floors:
+                st.warning("No floor plans.")
+                return
+            
+            floor_options = {f"Floor {f.floor_number}": f.id for f in floors}
+            selected_floor_name = st.selectbox("Floor", options=list(floor_options.keys()), key="monitor_floor")
+            selected_floor_id = floor_options[selected_floor_name]
+            
+            auto_refresh = st.checkbox("Auto-refresh", value=False, key="zone_auto_refresh")
+            
+            if st.button("Check for Alerts"):
+                new_alerts = check_zone_transitions(session, selected_floor_id)
+                if new_alerts:
+                    for alert in new_alerts:
+                        st.warning(f"{alert['beacon']} {alert['type']}ed {alert['zone']}")
+                else:
+                    st.info("No new zone transitions detected")
+        
+        with col2:
+            floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
+            
+            zones = session.query(Zone).filter(
+                Zone.floor_id == selected_floor_id,
+                Zone.is_active == True
+            ).all()
+            
+            gateways = session.query(Gateway).filter(
+                Gateway.floor_id == selected_floor_id,
+                Gateway.is_active == True
+            ).all()
+            
+            five_seconds_ago = datetime.utcnow() - timedelta(seconds=5)
+            recent_positions = session.query(Position).filter(
+                Position.floor_id == selected_floor_id,
+                Position.timestamp >= five_seconds_ago
+            ).order_by(Position.timestamp.desc()).all()
+            
+            beacon_positions = {}
+            for pos in recent_positions:
+                beacon = session.query(Beacon).filter(Beacon.id == pos.beacon_id).first()
+                if beacon and beacon.name not in beacon_positions:
+                    beacon_positions[beacon.name] = {
+                        'x': pos.x_position,
+                        'y': pos.y_position
+                    }
+            
+            st.subheader(f"Zone Map: {floor.name or f'Floor {floor.floor_number}'}")
+            
+            fig = go.Figure()
+            
+            has_floor_plan = render_floor_plan(fig, floor)
+            
+            if not has_floor_plan:
+                fig.add_shape(
+                    type="rect",
+                    x0=0, y0=0,
+                    x1=float(floor.width_meters), y1=float(floor.height_meters),
+                    line=dict(color="#2e5cbf", width=2),
+                    fillcolor="rgba(46, 92, 191, 0.05)"
+                )
+            
+            for zone in zones:
+                fig.add_shape(
+                    type="rect",
+                    x0=float(zone.x_min), y0=float(zone.y_min),
+                    x1=float(zone.x_max), y1=float(zone.y_max),
+                    line=dict(color=zone.color, width=2),
+                    fillcolor=zone.color,
+                    opacity=0.3
+                )
+                fig.add_annotation(
+                    x=(float(zone.x_min) + float(zone.x_max)) / 2,
+                    y=float(zone.y_max) + 0.5,
+                    text=zone.name,
+                    showarrow=False,
+                    font=dict(size=12, color=zone.color)
+                )
+            
+            for gw in gateways:
+                fig.add_trace(go.Scatter(
+                    x=[float(gw.x_position)],
+                    y=[float(gw.y_position)],
+                    mode='markers',
+                    marker=dict(size=10, color='blue', symbol='square'),
+                    name=f"GW: {gw.name}",
+                    showlegend=False
+                ))
+            
+            colors = ['red', 'green', 'orange', 'purple', 'cyan', 'magenta']
+            for idx, (beacon_name, pos) in enumerate(beacon_positions.items()):
+                color = colors[idx % len(colors)]
+                fig.add_trace(go.Scatter(
+                    x=[pos['x']],
+                    y=[pos['y']],
+                    mode='markers+text',
+                    marker=dict(size=12, color=color),
+                    text=[beacon_name],
+                    textposition='bottom center',
+                    name=beacon_name
+                ))
+            
+            fig.update_layout(
+                height=500,
+                xaxis=dict(
+                    title="X (meters)",
+                    range=[0, float(floor.width_meters)],
+                    scaleanchor="y",
+                    scaleratio=1
+                ),
+                yaxis=dict(
+                    title="Y (meters)",
+                    range=[0, float(floor.height_meters)]
+                ),
+                showlegend=True,
+                margin=dict(l=50, r=50, t=50, b=50)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, key="zone_monitoring_chart")
+            
+            st.subheader("Current Zone Occupancy")
+            
+            if zones and beacon_positions:
+                for zone in zones:
+                    beacons_in_zone = []
+                    for beacon_name, pos in beacon_positions.items():
+                        if point_in_zone(pos['x'], pos['y'], zone):
+                            beacons_in_zone.append(beacon_name)
+                    
+                    if beacons_in_zone:
+                        st.write(f"**{zone.name}:** {', '.join(beacons_in_zone)}")
+                    else:
+                        st.write(f"**{zone.name}:** Empty")
+            elif not zones:
+                st.info("No alert zones defined for this floor. Alert zones (rectangular areas with entry/exit triggers) are separate from coverage zones used for gateway planning.")
+            else:
+                st.info("No beacons currently tracked on this floor.")
+            
+            if auto_refresh:
+                import time
+                time.sleep(2)
+                st.rerun()
+
+
+def render_alert_history_tab():
+    """Render the alert history tab"""
+    with get_db_session() as session:
+        st.subheader("Alert History")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            filter_type = st.selectbox(
+                "Filter by Type",
+                options=["All", "Enter", "Exit"],
+                key="alert_filter_type"
+            )
+        
+        with col2:
+            filter_ack = st.selectbox(
+                "Filter by Status",
+                options=["All", "Unacknowledged", "Acknowledged"],
+                key="alert_filter_ack"
+            )
+        
+        query = session.query(ZoneAlert).order_by(ZoneAlert.timestamp.desc())
+        
+        if filter_type != "All":
+            query = query.filter(ZoneAlert.alert_type == filter_type.lower())
+        
+        if filter_ack == "Unacknowledged":
+            query = query.filter(ZoneAlert.acknowledged == False)
+        elif filter_ack == "Acknowledged":
+            query = query.filter(ZoneAlert.acknowledged == True)
+        
+        alerts = query.limit(100).all()
+        
+        if alerts:
+            st.write(f"**Total alerts shown:** {len(alerts)}")
+            
+            if st.button("Acknowledge All Visible"):
+                for alert in alerts:
+                    alert.acknowledged = True
+                st.success("All alerts acknowledged")
+                st.rerun()
+            
+            for alert in alerts:
+                zone = session.query(Zone).filter(Zone.id == alert.zone_id).first()
+                beacon = session.query(Beacon).filter(Beacon.id == alert.beacon_id).first()
+                
+                icon = "🚪" if alert.alert_type == "enter" else "🚶"
+                ack_icon = "✓" if alert.acknowledged else "!"
+                
+                with st.expander(
+                    f"{icon} [{ack_icon}] {beacon.name if beacon else 'Unknown'} {alert.alert_type}ed {zone.name if zone else 'Unknown'} - {alert.timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
+                    expanded=False
+                ):
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.write(f"**Zone:** {zone.name if zone else 'Unknown'}")
+                        st.write(f"**Beacon:** {beacon.name if beacon else 'Unknown'}")
+                        st.write(f"**Position:** ({alert.x_position:.2f}, {alert.y_position:.2f})")
+                        st.write(f"**Time:** {alert.timestamp}")
+                    
+                    with col2:
+                        if not alert.acknowledged:
+                            if st.button("Acknowledge", key=f"ack_{alert.id}"):
+                                alert.acknowledged = True
+                                st.rerun()
+        else:
+            st.info("No alerts recorded yet.")
 
 
 if __name__ == "__main__":

@@ -355,7 +355,6 @@ page = st.sidebar.radio(
         "MQTT Configuration",
         "Live Tracking",
         "History Playback",
-        "Zones & Alerts",
         "Analytics",
         "Import/Export",
         "Calibration",
@@ -413,9 +412,6 @@ elif page == "Live Tracking":
 elif page == "History Playback":
     from views import history_playback
     history_playback.render()
-elif page == "Zones & Alerts":
-    from views import zones_alerts
-    zones_alerts.render()
 elif page == "Analytics":
     from views import analytics
     analytics.render()
