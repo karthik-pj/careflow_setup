@@ -6,7 +6,7 @@ from io import BytesIO
 import base64
 import numpy as np
 from database import get_db_session, Floor, Building, CoverageZone
-from streamlit_plotly_events import plotly_events
+# Using native st.plotly_chart with on_select for click handling
 
 
 def latlon_to_meters(lat, lon, origin_lat, origin_lon):
@@ -320,7 +320,26 @@ def show():
                 st.session_state['prev_creation_method'] = zone_creation_method
                 
                 if zone_creation_method == "Draw Custom Shape":
-                    st.info("📍 **Click on the floor plan** (right side) to place points. Add at least 3 points, then click 'Complete Polygon'.")
+                    st.info("📍 **Add vertices** by entering X,Y coordinates below. Look at the floor plan grid to find coordinates. Add at least 3 points.")
+                    
+                    col_x, col_y, col_add = st.columns([2, 2, 1])
+                    with col_x:
+                        new_x = st.number_input("X (m)", min_value=0.0, max_value=float(selected_floor.width_meters) if selected_floor else 100.0, value=0.0, step=0.5, key="new_vertex_x")
+                    with col_y:
+                        new_y = st.number_input("Y (m)", min_value=0.0, max_value=float(selected_floor.height_meters) if selected_floor else 100.0, value=0.0, step=0.5, key="new_vertex_y")
+                    with col_add:
+                        st.write("")
+                        st.write("")
+                        if st.button("Add Point", type="primary"):
+                            is_duplicate = any(
+                                abs(v[0] - new_x) < 0.5 and abs(v[1] - new_y) < 0.5
+                                for v in st.session_state.drawing_vertices
+                            )
+                            if not is_duplicate:
+                                st.session_state.drawing_vertices.append([round(new_x, 2), round(new_y, 2)])
+                                st.rerun()
+                            else:
+                                st.warning("Point already exists nearby")
                     
                     if st.session_state.drawing_vertices:
                         st.write(f"**Vertices placed:** {len(st.session_state.drawing_vertices)}")
@@ -586,31 +605,7 @@ def show():
                     clickmode='event'
                 )
                 
-                click_events = plotly_events(
-                    fig, 
-                    click_event=True, 
-                    select_event=False,
-                    key="floor_plan_click"
-                )
-                
-                current_mode = st.session_state.get('zone_creation_method', 'Use Building Outline')
-                if current_mode == "Draw Custom Shape" and click_events and len(click_events) > 0:
-                    click_data = click_events[0]
-                    x_clicked = click_data.get('x')
-                    y_clicked = click_data.get('y')
-                    
-                    if x_clicked is not None and y_clicked is not None:
-                        x_clicked = round(float(x_clicked), 2)
-                        y_clicked = round(float(y_clicked), 2)
-                        
-                        is_duplicate = any(
-                            abs(v[0] - x_clicked) < 0.5 and abs(v[1] - y_clicked) < 0.5
-                            for v in st.session_state.drawing_vertices
-                        )
-                        
-                        if not is_duplicate:
-                            st.session_state.drawing_vertices.append([x_clicked, y_clicked])
-                            st.rerun()
+                st.plotly_chart(fig, use_container_width=True, key="floor_plan_view")
                 
                 st.caption(f"Floor dimensions: {selected_floor.width_meters:.1f}m × {selected_floor.height_meters:.1f}m")
                 
