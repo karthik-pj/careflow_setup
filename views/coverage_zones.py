@@ -319,46 +319,47 @@ def show():
                 st.session_state['prev_creation_method'] = zone_creation_method
                 
                 if zone_creation_method == "Draw Custom Shape":
-                    st.info("📍 **Click on the canvas** (right side) to place points. Draw at least 3 points to form a polygon.")
+                    st.info("📍 **Add points** using coordinates from the floor plan. Hover over the chart to see X/Y values, then enter them below.")
                     
                     if st.session_state.drawing_vertices:
                         st.write(f"**Vertices placed:** {len(st.session_state.drawing_vertices)}")
+                        vertices_to_delete = []
                         for i, v in enumerate(st.session_state.drawing_vertices):
                             col_pt, col_del = st.columns([4, 1])
                             with col_pt:
                                 st.caption(f"Point {i+1}: ({v[0]:.1f}, {v[1]:.1f}) m")
                             with col_del:
                                 if st.button("❌", key=f"del_pt_{i}", help="Remove this point"):
-                                    st.session_state.drawing_vertices.pop(i)
-                                    st.rerun()
+                                    vertices_to_delete.append(i)
+                        for idx in reversed(vertices_to_delete):
+                            st.session_state.drawing_vertices.pop(idx)
+                        if vertices_to_delete:
+                            st.rerun()
                     
-                    st.markdown("**Or add manually:**")
-                    col_x, col_y, col_add = st.columns([2, 2, 1])
-                    with col_x:
-                        new_x = st.number_input("X (m)", min_value=0.0, max_value=float(selected_floor.width_meters) if selected_floor else 100.0, value=0.0, step=0.5, key="new_vertex_x")
-                    with col_y:
-                        new_y = st.number_input("Y (m)", min_value=0.0, max_value=float(selected_floor.height_meters) if selected_floor else 100.0, value=0.0, step=0.5, key="new_vertex_y")
-                    with col_add:
-                        st.write("")
-                        st.write("")
-                        if st.button("Add", type="secondary"):
+                    with st.form(key="add_vertex_form", clear_on_submit=True):
+                        st.markdown("**Add vertex:**")
+                        col_x, col_y = st.columns(2)
+                        with col_x:
+                            new_x = st.number_input("X (m)", min_value=0.0, max_value=float(selected_floor.width_meters) if selected_floor else 100.0, value=0.0, step=0.5, key="form_vertex_x")
+                        with col_y:
+                            new_y = st.number_input("Y (m)", min_value=0.0, max_value=float(selected_floor.height_meters) if selected_floor else 100.0, value=0.0, step=0.5, key="form_vertex_y")
+                        
+                        add_submitted = st.form_submit_button("Add Point", type="primary")
+                        if add_submitted:
                             is_duplicate = any(
                                 abs(v[0] - new_x) < 0.5 and abs(v[1] - new_y) < 0.5
                                 for v in st.session_state.drawing_vertices
                             )
-                            if not is_duplicate:
+                            if not is_duplicate and (new_x > 0 or new_y > 0):
                                 st.session_state.drawing_vertices.append([round(new_x, 2), round(new_y, 2)])
-                                st.rerun()
                     
                     col_draw1, col_draw2, col_draw3 = st.columns(3)
                     with col_draw1:
                         if st.button("Undo Last", disabled=len(st.session_state.drawing_vertices) == 0):
                             st.session_state.drawing_vertices.pop()
-                            st.rerun()
                     with col_draw2:
                         if st.button("Clear All", disabled=len(st.session_state.drawing_vertices) == 0):
                             st.session_state.drawing_vertices = []
-                            st.rerun()
                     with col_draw3:
                         can_complete = len(st.session_state.drawing_vertices) >= 3
                         complete_btn = st.button("Complete Polygon", type="primary", disabled=not can_complete)
