@@ -320,18 +320,8 @@ try:
 except Exception as e:
     st.error(f"Database initialization error: {e}")
 
-try:
-    from utils.signal_processor import get_signal_processor
-    from database import get_db_session, MQTTConfig
-    
-    with get_db_session() as session:
-        mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
-        if mqtt_config:
-            processor = get_signal_processor()
-            if not processor.is_running:
-                processor.start()
-except Exception:
-    pass
+# Signal processor is manually started from MQTT Configuration page
+# This prevents auto-connection attempts that could slow down the app
 
 logo_path = Path("attached_assets/CAREFLOW LOGO-Color_1764612034940.png")
 if logo_path.exists():
