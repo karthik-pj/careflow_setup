@@ -538,6 +538,14 @@ def render_floor_plans():
                             st.write(f"**Dimensions:** {floor.width_meters:.1f}m x {floor.height_meters:.1f}m")
                             st.write(f"**Filename:** {floor.floor_plan_filename}")
                             
+                            # 3D positioning settings
+                            floor_height = getattr(floor, 'floor_height_meters', 3.5) or 3.5
+                            floor_elevation = getattr(floor, 'floor_elevation_meters', 0) or 0
+                            inter_floor_atten = getattr(floor, 'inter_floor_attenuation_db', 15.0) or 15.0
+                            st.write(f"**Floor Height:** {floor_height:.1f}m")
+                            st.write(f"**Elevation:** {floor_elevation:.1f}m")
+                            st.write(f"**Inter-floor Attenuation:** {inter_floor_atten:.0f} dB")
+                            
                             if floor.origin_lat and floor.origin_lon:
                                 st.write(f"**Origin:** {floor.origin_lat:.6f}, {floor.origin_lon:.6f}")
                             
@@ -554,6 +562,33 @@ def render_floor_plans():
                                                 st.write(f"... and {len(rooms) - 20} more")
                                 except:
                                     pass
+                            
+                            with st.popover("Edit 3D Settings"):
+                                new_height = st.number_input(
+                                    "Floor Height (m)", 
+                                    value=float(floor_height), 
+                                    min_value=1.0, max_value=20.0, step=0.5,
+                                    key=f"fh_{floor.id}"
+                                )
+                                new_elevation = st.number_input(
+                                    "Elevation from Ground (m)", 
+                                    value=float(floor_elevation), 
+                                    min_value=0.0, max_value=500.0, step=0.5,
+                                    key=f"fe_{floor.id}"
+                                )
+                                new_atten = st.number_input(
+                                    "Inter-floor Attenuation (dB)", 
+                                    value=float(inter_floor_atten), 
+                                    min_value=5.0, max_value=40.0, step=1.0,
+                                    key=f"fa_{floor.id}",
+                                    help="Signal loss through floor/ceiling (typical: 10-20 dB)"
+                                )
+                                if st.button("Save 3D Settings", key=f"save3d_{floor.id}", type="primary"):
+                                    floor.floor_height_meters = new_height
+                                    floor.floor_elevation_meters = new_elevation
+                                    floor.inter_floor_attenuation_db = new_atten
+                                    session.commit()
+                                    set_success_and_rerun("3D settings updated")
                             
                             if st.button("Delete", key=f"del_floor_{floor.id}", type="secondary"):
                                 session.delete(floor)

@@ -56,8 +56,8 @@ def render():
             with col2:
                 resource_type = st.selectbox(
                     "Resource Type*",
-                    options=["Device", "Staff", "Asset", "Vehicle", "Equipment", "Other"],
-                    help="What type of resource is this beacon attached to?"
+                    options=["Device", "Staff", "Asset", "Vehicle", "Equipment", "Reference", "Other"],
+                    help="What type of resource is this beacon attached to? Use 'Reference' for fixed floor validation beacons."
                 )
                 
                 assigned_to = st.text_input(
@@ -86,6 +86,10 @@ def render():
             
             with col3:
                 is_fixed = st.checkbox("This beacon has a fixed position")
+                is_reference = st.checkbox(
+                    "Use as Reference Beacon",
+                    help="Reference beacons help validate floor assignment and prevent floor hopping in multi-story buildings"
+                )
             
             floor_id = None
             fixed_x = None
@@ -154,6 +158,8 @@ def render():
                             floor_id=floor_id,
                             fixed_x=fixed_x,
                             fixed_y=fixed_y,
+                            is_reference=is_reference,
+                            reference_floor_id=floor_id if is_reference else None,
                             is_active=is_active
                         )
                         session.add(beacon)
@@ -208,7 +214,7 @@ def render():
         with filter_col1:
             filter_type = st.selectbox(
                 "Filter by Type",
-                options=["All", "Device", "Staff", "Asset", "Vehicle", "Equipment", "Other"]
+                options=["All", "Device", "Staff", "Asset", "Vehicle", "Equipment", "Reference", "Other"]
             )
         with filter_col2:
             filter_active = st.selectbox(
@@ -231,12 +237,14 @@ def render():
         if beacons:
             for beacon in beacons:
                 status_icon = "🟢" if beacon.is_active else "🔴"
+                ref_icon = "🎯" if getattr(beacon, 'is_reference', False) else ""
                 type_icon = {
                     "Device": "📱",
                     "Staff": "👤",
                     "Asset": "📦",
                     "Vehicle": "🚗",
                     "Equipment": "🔧",
+                    "Reference": "🎯",
                     "Other": "📍"
                 }.get(beacon.resource_type, "📍")
                 
@@ -259,10 +267,13 @@ def render():
                             floor = session.query(Floor).filter(Floor.id == beacon.floor_id).first()
                             st.write(f"**Fixed Position:** Yes")
                             if floor:
-                                st.write(f"**Floor:** {floor.name}")
+                                st.write(f"**Floor:** {floor.name or f'Floor {floor.floor_number}'}")
                             st.write(f"**Position:** ({beacon.fixed_x}m, {beacon.fixed_y}m)")
                         else:
                             st.write("**Fixed Position:** No (mobile)")
+                        
+                        if getattr(beacon, 'is_reference', False):
+                            st.success("**Reference Beacon** - Used for floor validation")
                         
                         if beacon.description:
                             st.write(f"**Description:** {beacon.description}")

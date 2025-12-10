@@ -444,7 +444,8 @@ def render_chart_fragment():
                     'velocity_x': pos.velocity_x,
                     'velocity_y': pos.velocity_y,
                     'speed': pos.speed,
-                    'timestamp': pos.timestamp
+                    'timestamp': pos.timestamp,
+                    'floor_confidence': getattr(pos, 'floor_confidence', 1.0) or 1.0
                 })
         
         st.subheader(f"{floor.name or f'Floor {floor.floor_number}'}")
@@ -488,12 +489,16 @@ def render_chart_fragment():
                     }.get(info.get('type', ''), '📍')
                     
                     with st.expander(f"{resource_icon} {beacon_name}", expanded=False):
-                        c1, c2, c3 = st.columns(3)
+                        c1, c2, c3, c4 = st.columns(4)
                         with c1:
                             st.write(f"**Position:** ({latest['x']:.1f}, {latest['y']:.1f})")
                         with c2:
                             st.write(f"**Speed:** {latest.get('speed', 0):.2f} m/s")
                         with c3:
+                            floor_conf = latest.get('floor_confidence', 1.0)
+                            conf_icon = "🟢" if floor_conf >= 0.8 else ("🟡" if floor_conf >= 0.6 else "🔴")
+                            st.write(f"**Floor Confidence:** {conf_icon} {floor_conf*100:.0f}%")
+                        with c4:
                             st.write(f"**Updated:** {latest['timestamp'].strftime('%H:%M:%S')}")
         
         elif not positions_data:

@@ -51,12 +51,16 @@ class Floor(Base):
     focus_max_x = Column(Float)
     focus_min_y = Column(Float)
     focus_max_y = Column(Float)
+    # 3D positioning support
+    floor_height_meters = Column(Float, default=3.5)  # Height of this floor (floor-to-ceiling)
+    floor_elevation_meters = Column(Float, default=0)  # Elevation from ground level
+    inter_floor_attenuation_db = Column(Float, default=15.0)  # Signal loss through floor/ceiling in dB
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     building = relationship("Building", back_populates="floors")
     gateways = relationship("Gateway", back_populates="floor", cascade="all, delete-orphan")
-    beacons = relationship("Beacon", back_populates="floor", cascade="all, delete-orphan")
+    beacons = relationship("Beacon", back_populates="floor", cascade="all, delete-orphan", foreign_keys="[Beacon.floor_id]")
     positions = relationship("Position", back_populates="floor", cascade="all, delete-orphan")
     zones = relationship("Zone", back_populates="floor", cascade="all, delete-orphan")
     calibration_points = relationship("CalibrationPoint", back_populates="floor", cascade="all, delete-orphan")
@@ -107,11 +111,14 @@ class Beacon(Base):
     is_fixed = Column(Boolean, default=False)
     fixed_x = Column(Float)
     fixed_y = Column(Float)
+    is_reference = Column(Boolean, default=False)  # Reference beacon for floor validation
+    reference_floor_id = Column(Integer, ForeignKey('floors.id'))  # Floor where reference beacon is fixed
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    floor = relationship("Floor", back_populates="beacons")
+    floor = relationship("Floor", back_populates="beacons", foreign_keys=[floor_id])
+    reference_floor = relationship("Floor", foreign_keys=[reference_floor_id])
     rssi_signals = relationship("RSSISignal", back_populates="beacon", cascade="all, delete-orphan")
     positions = relationship("Position", back_populates="beacon", cascade="all, delete-orphan")
 
@@ -148,6 +155,7 @@ class Position(Base):
     heading = Column(Float)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
     calculation_method = Column(String(50), default='triangulation')
+    floor_confidence = Column(Float, default=1.0)  # Confidence score for floor assignment (0-1)
     
     beacon = relationship("Beacon", back_populates="positions")
     floor = relationship("Floor", back_populates="positions")

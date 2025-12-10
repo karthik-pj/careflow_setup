@@ -12,6 +12,73 @@ from utils.triangulation import GatewayReading, trilaterate_2d, calculate_veloci
 from utils.mqtt_publisher import get_mqtt_publisher
 
 
+def determine_floor_from_signals(gateway_signals: Dict[int, Any], session) -> Tuple[int, float]:
+    """Determine the most likely floor for a beacon based on signal strengths from gateways.
+    
+    Only considers floors that actually contributed gateway readings.
+    Uses weighted signal strength scoring to prevent floor hopping.
+    
+    Returns:
+        Tuple of (floor_id, confidence) where confidence is 0-1
+    """
+    floor_scores: Dict[int, float] = {}
+    floor_signal_counts: Dict[int, int] = {}
+    floor_gateway_counts: Dict[int, int] = {}
+    
+    for gateway_id, signals in gateway_signals.items():
+        gateway = session.query(Gateway).filter(Gateway.id == gateway_id).first()
+        if not gateway or not signals:
+            continue
+        
+        # Get average RSSI for this gateway
+        avg_rssi = sum(s.rssi for s in signals) / len(signals)
+        
+        # Convert RSSI to a positive score (stronger signal = higher score)
+        # RSSI typically ranges from -30 (excellent) to -100 (weak)
+        signal_strength = max(0, 100 + avg_rssi)  # 0-70 range typically
+        
+        floor_id = gateway.floor_id
+        
+        if floor_id not in floor_scores:
+            floor_scores[floor_id] = 0
+            floor_signal_counts[floor_id] = 0
+            floor_gateway_counts[floor_id] = 0
+        
+        floor_scores[floor_id] += signal_strength
+        floor_signal_counts[floor_id] += len(signals)
+        floor_gateway_counts[floor_id] += 1
+    
+    if not floor_scores:
+        return None, 0
+    
+    # Normalize by gateway count and calculate average score per floor
+    for floor_id in floor_scores:
+        if floor_gateway_counts[floor_id] > 0:
+            floor_scores[floor_id] /= floor_gateway_counts[floor_id]
+    
+    # Find best floor (only from floors that had readings)
+    best_floor_id = max(floor_scores, key=floor_scores.get)
+    best_score = floor_scores[best_floor_id]
+    best_gateway_count = floor_gateway_counts.get(best_floor_id, 0)
+    
+    # Calculate confidence based on separation from second best and gateway count
+    sorted_scores = sorted(floor_scores.values(), reverse=True)
+    if len(sorted_scores) > 1:
+        second_best = sorted_scores[1]
+        # Confidence is higher when best floor is significantly stronger
+        separation = (best_score - second_best) / max(best_score, 1)
+        base_confidence = min(1.0, 0.5 + separation)
+    else:
+        # Only one floor has readings - confidence based on gateway count
+        base_confidence = 1.0
+    
+    # Boost confidence based on gateway count (more gateways = more reliable)
+    gateway_factor = min(1.0, best_gateway_count / 3.0)
+    confidence = base_confidence * (0.7 + 0.3 * gateway_factor)
+    
+    return best_floor_id, confidence
+
+
 class SignalProcessor:
     """Signal processor that stores signals via MQTT callback and calculates positions on demand.
     
@@ -320,7 +387,16 @@ class SignalProcessor:
                         continue
                     
                     readings = []
-                    floor_id = None
+                    
+                    # Determine floor using multi-floor signal analysis
+                    floor_id, floor_confidence = determine_floor_from_signals(gateway_signals, session)
+                    
+                    if not floor_id:
+                        continue
+                    
+                    # Collect readings from all gateways, preferring those on the determined floor
+                    primary_readings = []
+                    secondary_readings = []
                     
                     for gateway_id, signals in gateway_signals.items():
                         gateway = session.query(Gateway).filter(
@@ -344,17 +420,30 @@ class SignalProcessor:
                                 rssi = signals[0].rssi
                                 tx_power = signals[0].tx_power or -59
                             
-                            readings.append(GatewayReading(
+                            reading = GatewayReading(
                                 gateway_id=gateway.id,
                                 x=gateway.x_position,
                                 y=gateway.y_position,
                                 rssi=rssi,
                                 tx_power=tx_power,
                                 path_loss_exponent=gateway.path_loss_exponent or 2.5
-                            ))
-                            floor_id = gateway.floor_id
+                            )
+                            
+                            # Separate readings by floor
+                            if gateway.floor_id == floor_id:
+                                primary_readings.append(reading)
+                            else:
+                                secondary_readings.append(reading)
                     
-                    if len(readings) >= 1 and floor_id:
+                    # Use primary floor readings if enough, otherwise fall back to all readings
+                    if len(primary_readings) >= 1:
+                        readings = primary_readings
+                    elif len(secondary_readings) >= 1:
+                        # Use all readings if primary floor doesn't have enough
+                        readings = primary_readings + secondary_readings
+                        floor_confidence *= 0.6  # Reduce confidence when using mixed floors
+                    
+                    if len(readings) >= 1:
                         readings = filter_outlier_readings(readings)
                         x, y, accuracy = trilaterate_2d(readings, beacon_id=beacon_id)
                         
@@ -409,7 +498,8 @@ class SignalProcessor:
                             speed=speed,
                             heading=heading,
                             timestamp=datetime.utcnow(),
-                            calculation_method='triangulation'
+                            calculation_method='triangulation',
+                            floor_confidence=floor_confidence
                         )
                         session.add(position)
                         session.commit()
