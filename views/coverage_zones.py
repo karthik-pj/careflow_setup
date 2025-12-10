@@ -304,10 +304,10 @@ def show():
                 st.subheader("Add Zone")
                 
                 zone_creation_method = st.radio(
-                    "Creation Method",
-                    ["Draw on Floor Plan", "Use Current Viewport", "Use Building Footprint", "Use Full Floor"],
+                    "How do you want to define the zone area?",
+                    ["Draw Custom Shape", "Enter Coordinates", "Use Building Outline", "Cover Entire Floor"],
                     horizontal=False,
-                    help="Choose how to define the zone boundaries",
+                    help="Draw: click points on map | Coordinates: enter X/Y bounds | Outline: use floor plan boundary | Entire: full floor coverage",
                     key="zone_creation_method"
                 )
                 
@@ -319,8 +319,8 @@ def show():
                     st.session_state['viewport_bounds'] = None
                 st.session_state['prev_creation_method'] = zone_creation_method
                 
-                if zone_creation_method == "Draw on Floor Plan":
-                    st.info("📍 **Click on the floor plan** to place polygon vertices. Add at least 3 points, then click 'Complete Polygon'.")
+                if zone_creation_method == "Draw Custom Shape":
+                    st.info("📍 **Click on the floor plan** (right side) to place points. Add at least 3 points, then click 'Complete Polygon'.")
                     
                     if st.session_state.drawing_vertices:
                         st.write(f"**Vertices placed:** {len(st.session_state.drawing_vertices)}")
@@ -344,8 +344,8 @@ def show():
                         st.session_state['pending_polygon'] = st.session_state.drawing_vertices.copy()
                         st.session_state.drawing_vertices = []
                 
-                elif zone_creation_method == "Use Current Viewport":
-                    st.info("📐 Enter the viewport bounds to define a rectangular zone.")
+                elif zone_creation_method == "Enter Coordinates":
+                    st.info("📐 Enter the corner coordinates to define a rectangular zone.")
                     
                     col_vp1, col_vp2 = st.columns(2)
                     with col_vp1:
@@ -388,12 +388,12 @@ def show():
                 use_viewport = st.session_state.get('use_viewport')
                 viewport_bounds = st.session_state.get('viewport_bounds')
                 
-                if zone_creation_method in ["Use Building Footprint", "Use Full Floor"]:
+                if zone_creation_method in ["Use Building Outline", "Cover Entire Floor"]:
                     if st.button("Create Zone", type="primary"):
                         if not zone_name:
                             st.error("Please enter a zone name")
                         else:
-                            if zone_creation_method == "Use Building Footprint":
+                            if zone_creation_method == "Use Building Outline":
                                 footprint = extract_building_footprint(selected_floor)
                                 if footprint:
                                     polygon_coords = json.dumps(footprint)
@@ -593,8 +593,8 @@ def show():
                     key="floor_plan_click"
                 )
                 
-                current_mode = st.session_state.get('zone_creation_method', 'Use Building Footprint')
-                if current_mode == "Draw on Floor Plan" and click_events and len(click_events) > 0:
+                current_mode = st.session_state.get('zone_creation_method', 'Use Building Outline')
+                if current_mode == "Draw Custom Shape" and click_events and len(click_events) > 0:
                     click_data = click_events[0]
                     x_clicked = click_data.get('x')
                     y_clicked = click_data.get('y')
