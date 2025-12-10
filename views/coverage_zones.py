@@ -730,24 +730,30 @@ def render_coverage_zones_tab():
                                     pass
                             if all_xs and all_ys:
                                 margin = 2.0
-                                focus_x_min = max(0, min(all_xs) - margin)
-                                focus_x_max = min(selected_floor.width_meters, max(all_xs) + margin)
-                                focus_y_min = max(0, min(all_ys) - margin)
-                                focus_y_max = min(selected_floor.height_meters, max(all_ys) + margin)
-                                selected_floor.focus_min_x = focus_x_min
-                                selected_floor.focus_max_x = focus_x_max
-                                selected_floor.focus_min_y = focus_y_min
-                                selected_floor.focus_max_y = focus_y_max
+                                new_focus_x_min = max(0, min(all_xs) - margin)
+                                new_focus_x_max = min(selected_floor.width_meters, max(all_xs) + margin)
+                                new_focus_y_min = max(0, min(all_ys) - margin)
+                                new_focus_y_max = min(selected_floor.height_meters, max(all_ys) + margin)
+                                selected_floor.focus_min_x = new_focus_x_min
+                                selected_floor.focus_max_x = new_focus_x_max
+                                selected_floor.focus_min_y = new_focus_y_min
+                                selected_floor.focus_max_y = new_focus_y_max
                                 session.commit()
                                 st.session_state['focus_area'] = {
-                                    'x_min': focus_x_min, 'x_max': focus_x_max,
-                                    'y_min': focus_y_min, 'y_max': focus_y_max
+                                    'x_min': new_focus_x_min, 'x_max': new_focus_x_max,
+                                    'y_min': new_focus_y_min, 'y_max': new_focus_y_max
                                 }
-                                st.session_state['focus_x_min'] = focus_x_min
-                                st.session_state['focus_x_max'] = focus_x_max
-                                st.session_state['focus_y_min'] = focus_y_min
-                                st.session_state['focus_y_max'] = focus_y_max
+                                st.session_state['focus_x_min'] = new_focus_x_min
+                                st.session_state['focus_x_max'] = new_focus_x_max
+                                st.session_state['focus_y_min'] = new_focus_y_min
+                                st.session_state['focus_y_max'] = new_focus_y_max
+                                # Update widget keys directly so input fields reflect new values
+                                st.session_state['focus_x_min_input'] = new_focus_x_min
+                                st.session_state['focus_x_max_input'] = new_focus_x_max
+                                st.session_state['focus_y_min_input'] = new_focus_y_min
+                                st.session_state['focus_y_max_input'] = new_focus_y_max
                                 st.success("Focus area set to zones bounds")
+                                st.rerun()
                     
                     if st.session_state.get('focus_area'):
                         fa = st.session_state['focus_area']
