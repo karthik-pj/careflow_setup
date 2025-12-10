@@ -522,6 +522,73 @@ def show():
                     CoverageZone.is_active == True
                 ).all()
                 
+                if 'focus_area' not in st.session_state:
+                    st.session_state['focus_area'] = None
+                
+                with st.expander("🔍 Focus Area (set view bounds)", expanded=False):
+                    st.caption("Set specific view bounds to focus on a region. The chart will stay zoomed to this area.")
+                    
+                    focus_col1, focus_col2 = st.columns(2)
+                    with focus_col1:
+                        focus_x_min = st.number_input("X Min", min_value=0.0, max_value=float(selected_floor.width_meters), 
+                                                       value=float(st.session_state.get('focus_x_min', 0.0)), step=1.0, key="focus_x_min_input")
+                        focus_y_min = st.number_input("Y Min", min_value=0.0, max_value=float(selected_floor.height_meters), 
+                                                       value=float(st.session_state.get('focus_y_min', 0.0)), step=1.0, key="focus_y_min_input")
+                    with focus_col2:
+                        focus_x_max = st.number_input("X Max", min_value=0.0, max_value=float(selected_floor.width_meters), 
+                                                       value=float(st.session_state.get('focus_x_max', selected_floor.width_meters)), step=1.0, key="focus_x_max_input")
+                        focus_y_max = st.number_input("Y Max", min_value=0.0, max_value=float(selected_floor.height_meters), 
+                                                       value=float(st.session_state.get('focus_y_max', selected_floor.height_meters)), step=1.0, key="focus_y_max_input")
+                    
+                    focus_btn_col1, focus_btn_col2, focus_btn_col3 = st.columns(3)
+                    with focus_btn_col1:
+                        if st.button("Apply Focus", type="primary"):
+                            if focus_x_max > focus_x_min and focus_y_max > focus_y_min:
+                                st.session_state['focus_area'] = {
+                                    'x_min': focus_x_min, 'x_max': focus_x_max,
+                                    'y_min': focus_y_min, 'y_max': focus_y_max
+                                }
+                                st.session_state['focus_x_min'] = focus_x_min
+                                st.session_state['focus_x_max'] = focus_x_max
+                                st.session_state['focus_y_min'] = focus_y_min
+                                st.session_state['focus_y_max'] = focus_y_max
+                            else:
+                                st.error("Max must be greater than Min")
+                    with focus_btn_col2:
+                        if st.button("Reset to Full"):
+                            st.session_state['focus_area'] = None
+                            st.session_state['focus_x_min'] = 0.0
+                            st.session_state['focus_x_max'] = selected_floor.width_meters
+                            st.session_state['focus_y_min'] = 0.0
+                            st.session_state['focus_y_max'] = selected_floor.height_meters
+                    with focus_btn_col3:
+                        if zones and st.button("Focus on Zones"):
+                            all_xs, all_ys = [], []
+                            for zone in zones:
+                                try:
+                                    coords = json.loads(zone.polygon_coords)
+                                    for c in coords:
+                                        all_xs.append(c[0])
+                                        all_ys.append(c[1])
+                                except:
+                                    pass
+                            if all_xs and all_ys:
+                                margin = 2.0
+                                st.session_state['focus_area'] = {
+                                    'x_min': max(0, min(all_xs) - margin),
+                                    'x_max': min(selected_floor.width_meters, max(all_xs) + margin),
+                                    'y_min': max(0, min(all_ys) - margin),
+                                    'y_max': min(selected_floor.height_meters, max(all_ys) + margin)
+                                }
+                                st.session_state['focus_x_min'] = st.session_state['focus_area']['x_min']
+                                st.session_state['focus_x_max'] = st.session_state['focus_area']['x_max']
+                                st.session_state['focus_y_min'] = st.session_state['focus_area']['y_min']
+                                st.session_state['focus_y_max'] = st.session_state['focus_area']['y_max']
+                    
+                    if st.session_state.get('focus_area'):
+                        fa = st.session_state['focus_area']
+                        st.info(f"Focused: X [{fa['x_min']:.1f} - {fa['x_max']:.1f}], Y [{fa['y_min']:.1f} - {fa['y_max']:.1f}]")
+                
                 fig = go.Figure()
                 
                 has_floor_plan = render_floor_plan(fig, selected_floor)
@@ -581,27 +648,51 @@ def show():
                         hovertemplate='Completed polygon ready to save<extra></extra>'
                     ))
                 
-                fig.update_layout(
-                    height=600,
-                    uirevision=f"floor_{selected_floor.id}",
-                    xaxis=dict(
+                focus_area = st.session_state.get('focus_area')
+                if focus_area:
+                    x_axis_config = dict(
                         title="X (meters)",
-                        autorange=True,
+                        range=[focus_area['x_min'], focus_area['x_max']],
                         scaleanchor="y",
                         scaleratio=1,
                         showgrid=True,
                         gridwidth=1,
                         gridcolor='rgba(0,0,0,0.1)',
                         constrain='domain'
-                    ),
-                    yaxis=dict(
+                    )
+                    y_axis_config = dict(
                         title="Y (meters)",
-                        autorange=True,
+                        range=[focus_area['y_min'], focus_area['y_max']],
                         showgrid=True,
                         gridwidth=1,
                         gridcolor='rgba(0,0,0,0.1)',
                         constrain='domain'
-                    ),
+                    )
+                else:
+                    x_axis_config = dict(
+                        title="X (meters)",
+                        range=[0, selected_floor.width_meters],
+                        scaleanchor="y",
+                        scaleratio=1,
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(0,0,0,0.1)',
+                        constrain='domain'
+                    )
+                    y_axis_config = dict(
+                        title="Y (meters)",
+                        range=[0, selected_floor.height_meters],
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(0,0,0,0.1)',
+                        constrain='domain'
+                    )
+                
+                fig.update_layout(
+                    height=600,
+                    uirevision=f"floor_{selected_floor.id}_focus",
+                    xaxis=x_axis_config,
+                    yaxis=y_axis_config,
                     showlegend=True,
                     legend=dict(
                         orientation="h",
