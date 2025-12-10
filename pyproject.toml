@@ -14,5 +14,6 @@ dependencies = [
     "pymupdf>=1.26.6",
     "sqlalchemy>=2.0.44",
     "streamlit>=1.51.0",
+    "streamlit-drawable-canvas>=0.9.3",
     "streamlit-plotly-events>=0.0.6",
 ]
