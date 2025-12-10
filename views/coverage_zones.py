@@ -6,7 +6,6 @@ from io import BytesIO
 import base64
 import numpy as np
 from database import get_db_session, Floor, Building, CoverageZone
-from streamlit_drawable_canvas import st_canvas
 
 
 def latlon_to_meters(lat, lon, origin_lat, origin_lon):
@@ -522,167 +521,101 @@ def show():
                     CoverageZone.is_active == True
                 ).all()
                 
-                if current_mode == "Draw Custom Shape":
-                    st.markdown("**Click to place points on the floor plan:**")
-                    
-                    canvas_width = 700
-                    canvas_height = int(canvas_width * (selected_floor.height_meters / selected_floor.width_meters))
-                    canvas_height = min(max(canvas_height, 300), 600)
-                    
-                    scale_x = canvas_width / selected_floor.width_meters
-                    scale_y = canvas_height / selected_floor.height_meters
-                    
-                    bg_image = None
-                    if selected_floor.floor_plan_image:
-                        try:
-                            bg_image = Image.open(BytesIO(selected_floor.floor_plan_image))
-                            bg_image = bg_image.resize((canvas_width, canvas_height))
-                        except Exception:
-                            bg_image = None
-                    
-                    if bg_image is None:
-                        bg_image = Image.new('RGB', (canvas_width, canvas_height), color=(245, 245, 250))
-                        from PIL import ImageDraw
-                        draw = ImageDraw.Draw(bg_image)
-                        grid_spacing_m = 5
-                        grid_spacing_px_x = int(grid_spacing_m * scale_x)
-                        grid_spacing_px_y = int(grid_spacing_m * scale_y)
-                        for x_px in range(0, canvas_width, grid_spacing_px_x):
-                            draw.line([(x_px, 0), (x_px, canvas_height)], fill=(200, 200, 200), width=1)
-                        for y_px in range(0, canvas_height, grid_spacing_px_y):
-                            draw.line([(0, y_px), (canvas_width, y_px)], fill=(200, 200, 200), width=1)
-                        draw.rectangle([0, 0, canvas_width-1, canvas_height-1], outline=(46, 92, 191), width=2)
-                    
-                    canvas_result = st_canvas(
-                        fill_color="rgba(255, 107, 53, 0.3)",
-                        stroke_width=2,
-                        stroke_color="#ff6b35",
-                        background_image=bg_image,
-                        update_streamlit=True,
-                        height=canvas_height,
-                        width=canvas_width,
-                        drawing_mode="point",
-                        point_display_radius=8,
-                        key="zone_canvas",
-                    )
-                    
-                    if canvas_result.json_data is not None:
-                        objects = canvas_result.json_data.get("objects", [])
-                        if objects:
-                            new_vertices = []
-                            for obj in objects:
-                                if obj.get("type") == "circle":
-                                    px_x = obj.get("left", 0)
-                                    px_y = obj.get("top", 0)
-                                    meter_x = round(px_x / scale_x, 2)
-                                    meter_y = round((canvas_height - px_y) / scale_y, 2)
-                                    meter_x = max(0, min(meter_x, selected_floor.width_meters))
-                                    meter_y = max(0, min(meter_y, selected_floor.height_meters))
-                                    new_vertices.append([meter_x, meter_y])
-                            
-                            if new_vertices and new_vertices != st.session_state.drawing_vertices:
-                                st.session_state.drawing_vertices = new_vertices
-                    
-                    col_scale1, col_scale2 = st.columns(2)
-                    with col_scale1:
-                        st.caption(f"Floor: {selected_floor.width_meters:.1f}m × {selected_floor.height_meters:.1f}m")
-                    with col_scale2:
-                        st.caption(f"Scale: 1px = {1/scale_x:.2f}m")
+                fig = go.Figure()
                 
-                else:
-                    fig = go.Figure()
+                has_floor_plan = render_floor_plan(fig, selected_floor)
+                
+                if not has_floor_plan:
+                    fig.add_shape(
+                        type="rect",
+                        x0=0, y0=0,
+                        x1=selected_floor.width_meters, y1=selected_floor.height_meters,
+                        line=dict(color="#2e5cbf", width=2),
+                        fillcolor="rgba(46, 92, 191, 0.05)"
+                    )
+                
+                if zones:
+                    render_coverage_zones(fig, zones)
+                
+                drawing_vertices = st.session_state.get('drawing_vertices', [])
+                if drawing_vertices:
+                    xs = [v[0] for v in drawing_vertices]
+                    ys = [v[1] for v in drawing_vertices]
                     
-                    has_floor_plan = render_floor_plan(fig, selected_floor)
+                    fig.add_trace(go.Scatter(
+                        x=xs, y=ys,
+                        mode='markers+lines+text',
+                        marker=dict(size=14, color='#ff6b35', symbol='circle'),
+                        line=dict(color='#ff6b35', width=2, dash='dash'),
+                        text=[f"{i+1}" for i in range(len(xs))],
+                        textposition="top center",
+                        textfont=dict(size=12, color='#ff6b35'),
+                        name='Drawing Points',
+                        hovertemplate='Point %{text}<br>X: %{x:.1f}m<br>Y: %{y:.1f}m<extra></extra>'
+                    ))
                     
-                    if not has_floor_plan:
-                        fig.add_shape(
-                            type="rect",
-                            x0=0, y0=0,
-                            x1=selected_floor.width_meters, y1=selected_floor.height_meters,
-                            line=dict(color="#2e5cbf", width=2),
-                            fillcolor="rgba(46, 92, 191, 0.05)"
-                        )
-                    
-                    if zones:
-                        render_coverage_zones(fig, zones)
-                    
-                    drawing_vertices = st.session_state.get('drawing_vertices', [])
-                    if drawing_vertices:
-                        xs = [v[0] for v in drawing_vertices]
-                        ys = [v[1] for v in drawing_vertices]
-                        
-                        fig.add_trace(go.Scatter(
-                            x=xs, y=ys,
-                            mode='markers+lines',
-                            marker=dict(size=12, color='#ff6b35', symbol='circle'),
-                            line=dict(color='#ff6b35', width=2, dash='dash'),
-                            name='Drawing',
-                            hovertemplate='Point %{pointNumber+1}<br>(%{x:.1f}, %{y:.1f})<extra></extra>'
-                        ))
-                        
-                        if len(drawing_vertices) >= 3:
-                            fig.add_trace(go.Scatter(
-                                x=xs + [xs[0]], y=ys + [ys[0]],
-                                fill='toself',
-                                fillcolor='rgba(255, 107, 53, 0.15)',
-                                line=dict(color='rgba(255, 107, 53, 0.5)', width=1, dash='dot'),
-                                mode='lines',
-                                name='Preview',
-                                showlegend=False,
-                                hoverinfo='skip'
-                            ))
-                    
-                    pending_polygon = st.session_state.get('pending_polygon')
-                    if pending_polygon:
-                        xs = [v[0] for v in pending_polygon]
-                        ys = [v[1] for v in pending_polygon]
+                    if len(drawing_vertices) >= 3:
                         fig.add_trace(go.Scatter(
                             x=xs + [xs[0]], y=ys + [ys[0]],
                             fill='toself',
-                            fillcolor='rgba(46, 191, 92, 0.2)',
-                            line=dict(color='#2ebf5c', width=3),
+                            fillcolor='rgba(255, 107, 53, 0.15)',
+                            line=dict(color='rgba(255, 107, 53, 0.5)', width=1, dash='dot'),
                             mode='lines',
-                            name='Completed Polygon',
-                            hovertemplate='Completed polygon ready to save<extra></extra>'
+                            name='Preview',
+                            showlegend=False,
+                            hoverinfo='skip'
                         ))
-                    
-                    fig.update_layout(
-                        height=600,
-                        uirevision=f"floor_{selected_floor.id}",
-                        xaxis=dict(
-                            title="X (meters)",
-                            autorange=True,
-                            scaleanchor="y",
-                            scaleratio=1,
-                            showgrid=True,
-                            gridwidth=1,
-                            gridcolor='rgba(0,0,0,0.1)',
-                            constrain='domain'
-                        ),
-                        yaxis=dict(
-                            title="Y (meters)",
-                            autorange=True,
-                            showgrid=True,
-                            gridwidth=1,
-                            gridcolor='rgba(0,0,0,0.1)',
-                            constrain='domain'
-                        ),
-                        showlegend=True,
-                        legend=dict(
-                            orientation="h",
-                            yanchor="bottom",
-                            y=1.02,
-                            xanchor="right",
-                            x=1
-                        ),
-                        margin=dict(l=50, r=50, t=50, b=50),
-                        plot_bgcolor='rgba(255,255,255,0.9)',
-                        clickmode='event'
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True, key="floor_plan_view")
-                    
-                    st.caption(f"Floor dimensions: {selected_floor.width_meters:.1f}m × {selected_floor.height_meters:.1f}m")
+                
+                pending_polygon = st.session_state.get('pending_polygon')
+                if pending_polygon:
+                    xs = [v[0] for v in pending_polygon]
+                    ys = [v[1] for v in pending_polygon]
+                    fig.add_trace(go.Scatter(
+                        x=xs + [xs[0]], y=ys + [ys[0]],
+                        fill='toself',
+                        fillcolor='rgba(46, 191, 92, 0.2)',
+                        line=dict(color='#2ebf5c', width=3),
+                        mode='lines',
+                        name='Completed Polygon',
+                        hovertemplate='Completed polygon ready to save<extra></extra>'
+                    ))
+                
+                fig.update_layout(
+                    height=600,
+                    uirevision=f"floor_{selected_floor.id}",
+                    xaxis=dict(
+                        title="X (meters)",
+                        autorange=True,
+                        scaleanchor="y",
+                        scaleratio=1,
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(0,0,0,0.1)',
+                        constrain='domain'
+                    ),
+                    yaxis=dict(
+                        title="Y (meters)",
+                        autorange=True,
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(0,0,0,0.1)',
+                        constrain='domain'
+                    ),
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    ),
+                    margin=dict(l=50, r=50, t=50, b=50),
+                    plot_bgcolor='rgba(255,255,255,0.9)'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True, key="floor_plan_view")
+                
+                st.caption(f"Floor dimensions: {selected_floor.width_meters:.1f}m × {selected_floor.height_meters:.1f}m")
                 
                 if zones:
                     st.success(f"{len(zones)} coverage zone(s) defined")
