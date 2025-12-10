@@ -304,9 +304,9 @@ def show():
                 
                 zone_creation_method = st.radio(
                     "How do you want to define the zone area?",
-                    ["Draw Custom Shape", "Enter Coordinates", "Use Building Outline", "Cover Entire Floor"],
+                    ["Draw Custom Shape", "Enter Rectangle Bounds", "Cover Entire Floor"],
                     horizontal=False,
-                    help="Draw: click points on map | Coordinates: enter X/Y bounds | Outline: use floor plan boundary | Entire: full floor coverage",
+                    help="Draw: enter vertex coordinates | Rectangle: enter X/Y min/max | Entire: full floor coverage",
                     key="zone_creation_method"
                 )
                 
@@ -368,7 +368,7 @@ def show():
                         st.session_state['pending_polygon'] = st.session_state.drawing_vertices.copy()
                         st.session_state.drawing_vertices = []
                 
-                elif zone_creation_method == "Enter Coordinates":
+                elif zone_creation_method == "Enter Rectangle Bounds":
                     st.info("📐 Enter the corner coordinates to define a rectangular zone.")
                     
                     col_vp1, col_vp2 = st.columns(2)
@@ -379,7 +379,7 @@ def show():
                         vp_x_max = st.number_input("X Max (m)", min_value=0.0, max_value=float(selected_floor.width_meters), value=float(selected_floor.width_meters), key="vp_x_max")
                         vp_y_max = st.number_input("Y Max (m)", min_value=0.0, max_value=float(selected_floor.height_meters), value=float(selected_floor.height_meters), key="vp_y_max")
                     
-                    if st.button("Set Viewport Bounds", type="primary"):
+                    if st.button("Set Rectangle Bounds", type="primary"):
                         if vp_x_max > vp_x_min and vp_y_max > vp_y_min:
                             st.session_state['use_viewport'] = True
                             st.session_state['viewport_bounds'] = {
@@ -412,31 +412,18 @@ def show():
                 use_viewport = st.session_state.get('use_viewport')
                 viewport_bounds = st.session_state.get('viewport_bounds')
                 
-                if zone_creation_method in ["Use Building Outline", "Cover Entire Floor"]:
+                if zone_creation_method == "Cover Entire Floor":
                     if st.button("Create Zone", type="primary"):
                         if not zone_name:
                             st.error("Please enter a zone name")
                         else:
-                            if zone_creation_method == "Use Building Outline":
-                                footprint = extract_building_footprint(selected_floor)
-                                if footprint:
-                                    polygon_coords = json.dumps(footprint)
-                                else:
-                                    polygon_coords = json.dumps([
-                                        [0, 0],
-                                        [selected_floor.width_meters, 0],
-                                        [selected_floor.width_meters, selected_floor.height_meters],
-                                        [0, selected_floor.height_meters],
-                                        [0, 0]
-                                    ])
-                            else:
-                                polygon_coords = json.dumps([
-                                    [0, 0],
-                                    [selected_floor.width_meters, 0],
-                                    [selected_floor.width_meters, selected_floor.height_meters],
-                                    [0, selected_floor.height_meters],
-                                    [0, 0]
-                                ])
+                            polygon_coords = json.dumps([
+                                [0, 0],
+                                [selected_floor.width_meters, 0],
+                                [selected_floor.width_meters, selected_floor.height_meters],
+                                [0, selected_floor.height_meters],
+                                [0, 0]
+                            ])
                             
                             new_zone = CoverageZone(
                                 floor_id=selected_floor.id,
@@ -446,7 +433,9 @@ def show():
                                 target_accuracy=target_accuracy,
                                 priority=priority,
                                 color=zone_color,
-                                is_active=True
+                                is_active=True,
+                                alert_on_enter=alert_on_enter,
+                                alert_on_exit=alert_on_exit
                             )
                             session.add(new_zone)
                             session.commit()
@@ -471,7 +460,9 @@ def show():
                                 target_accuracy=target_accuracy,
                                 priority=priority,
                                 color=zone_color,
-                                is_active=True
+                                is_active=True,
+                                alert_on_enter=alert_on_enter,
+                                alert_on_exit=alert_on_exit
                             )
                             session.add(new_zone)
                             session.commit()
@@ -482,8 +473,8 @@ def show():
                 elif use_viewport and viewport_bounds:
                     x_min, x_max = viewport_bounds.get('x_min', 0), viewport_bounds.get('x_max', selected_floor.width_meters)
                     y_min, y_max = viewport_bounds.get('y_min', 0), viewport_bounds.get('y_max', selected_floor.height_meters)
-                    st.success(f"Viewport captured: ({x_min:.1f}, {y_min:.1f}) to ({x_max:.1f}, {y_max:.1f})")
-                    if st.button("Save Zone from Viewport", type="primary"):
+                    st.success(f"Rectangle bounds set: ({x_min:.1f}, {y_min:.1f}) to ({x_max:.1f}, {y_max:.1f})")
+                    if st.button("Save Zone", type="primary"):
                         if not zone_name:
                             st.error("Please enter a zone name")
                         else:
@@ -502,7 +493,9 @@ def show():
                                 target_accuracy=target_accuracy,
                                 priority=priority,
                                 color=zone_color,
-                                is_active=True
+                                is_active=True,
+                                alert_on_enter=alert_on_enter,
+                                alert_on_exit=alert_on_exit
                             )
                             session.add(new_zone)
                             session.commit()
@@ -515,7 +508,7 @@ def show():
             st.subheader("Floor Plan Preview")
             
             if selected_floor:
-                current_mode = st.session_state.get('zone_creation_method', 'Use Building Outline')
+                current_mode = st.session_state.get('zone_creation_method', 'Draw Custom Shape')
                 
                 zones = session.query(CoverageZone).filter(
                     CoverageZone.floor_id == selected_floor.id,
