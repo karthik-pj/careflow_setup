@@ -554,21 +554,24 @@ def show():
                 
                 fig.update_layout(
                     height=600,
+                    uirevision=f"floor_{selected_floor.id}",
                     xaxis=dict(
                         title="X (meters)",
-                        range=[-5, selected_floor.width_meters + 5],
+                        autorange=True,
                         scaleanchor="y",
                         scaleratio=1,
                         showgrid=True,
                         gridwidth=1,
-                        gridcolor='rgba(0,0,0,0.1)'
+                        gridcolor='rgba(0,0,0,0.1)',
+                        constrain='domain'
                     ),
                     yaxis=dict(
                         title="Y (meters)",
-                        range=[-5, selected_floor.height_meters + 5],
+                        autorange=True,
                         showgrid=True,
                         gridwidth=1,
-                        gridcolor='rgba(0,0,0,0.1)'
+                        gridcolor='rgba(0,0,0,0.1)',
+                        constrain='domain'
                     ),
                     showlegend=True,
                     legend=dict(
