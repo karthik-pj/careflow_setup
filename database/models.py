@@ -65,6 +65,7 @@ class Floor(Base):
     zones = relationship("Zone", back_populates="floor", cascade="all, delete-orphan")
     calibration_points = relationship("CalibrationPoint", back_populates="floor", cascade="all, delete-orphan")
     coverage_zones = relationship("CoverageZone", back_populates="floor", cascade="all, delete-orphan")
+    gateway_plans = relationship("GatewayPlan", back_populates="floor", cascade="all, delete-orphan")
 
 
 class Gateway(Base):
@@ -279,7 +280,7 @@ class GatewayPlan(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    floor = relationship("Floor")
+    floor = relationship("Floor", back_populates="gateway_plans")
     planned_gateways = relationship("PlannedGateway", back_populates="plan", cascade="all, delete-orphan")
 
 
