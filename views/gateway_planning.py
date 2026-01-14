@@ -819,6 +819,20 @@ def render_gateway_planning():
                 key="plan_building"
             )
             
+            # Detect building change and clear floor/plan selections
+            if "gateway_planning_last_building_id" not in st.session_state:
+                st.session_state.gateway_planning_last_building_id = selected_building_id
+            elif st.session_state.gateway_planning_last_building_id != selected_building_id:
+                st.session_state.gateway_planning_last_building_id = selected_building_id
+                # Clear floor and plan selections when building changes
+                for key in ["plan_floor", "selected_plan", "gateway_planning_last_floor_id"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                for key in list(st.session_state.keys()):
+                    if key.startswith("gateway_plan_"):
+                        del st.session_state[key]
+                st.rerun()
+            
             selected_building = session.query(Building).filter(Building.id == selected_building_id).first()
             floors = selected_building.floors if selected_building else []
             
@@ -826,7 +840,8 @@ def render_gateway_planning():
                 st.warning("No floors defined for this building. Please add floor plans first.")
                 return
             
-            floor_options = {f.id: f"{f.name or f'Floor {f.floor_number}'}" for f in floors}
+            # Use same naming format as Coverage Zones for consistency
+            floor_options = {f.id: f"{f.name} (Level {f.floor_number})" for f in floors}
             selected_floor_id = st.selectbox(
                 "Select Floor",
                 options=list(floor_options.keys()),
@@ -838,10 +853,11 @@ def render_gateway_planning():
             if "gateway_planning_last_floor_id" not in st.session_state:
                 st.session_state.gateway_planning_last_floor_id = selected_floor_id
             elif st.session_state.gateway_planning_last_floor_id != selected_floor_id:
-                # Floor changed - clear plan selection
+                # Floor changed - clear plan selection and any cached data
                 st.session_state.gateway_planning_last_floor_id = selected_floor_id
-                if "selected_plan" in st.session_state:
-                    del st.session_state["selected_plan"]
+                for key in list(st.session_state.keys()):
+                    if key.startswith("selected_plan") or key.startswith("gateway_plan_"):
+                        del st.session_state[key]
                 st.rerun()
             
             selected_floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
