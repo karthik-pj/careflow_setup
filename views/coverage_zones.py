@@ -598,9 +598,7 @@ def render_coverage_zones_tab():
                                 target_accuracy=target_accuracy,
                                 priority=priority,
                                 color=zone_color,
-                                is_active=True,
-                                alert_on_enter=alert_on_enter,
-                                alert_on_exit=alert_on_exit
+                                is_active=True
                             )
                             session.add(new_zone)
                             session.commit()
@@ -631,9 +629,7 @@ def render_coverage_zones_tab():
                                 target_accuracy=target_accuracy,
                                 priority=priority,
                                 color=zone_color,
-                                is_active=True,
-                                alert_on_enter=alert_on_enter,
-                                alert_on_exit=alert_on_exit
+                                is_active=True
                             )
                             session.add(new_zone)
                             session.commit()
