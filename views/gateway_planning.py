@@ -834,6 +834,16 @@ def render_gateway_planning():
                 key="plan_floor"
             )
             
+            # Detect floor change and clear plan selection to avoid showing wrong floor's plan
+            if "gateway_planning_last_floor_id" not in st.session_state:
+                st.session_state.gateway_planning_last_floor_id = selected_floor_id
+            elif st.session_state.gateway_planning_last_floor_id != selected_floor_id:
+                # Floor changed - clear plan selection
+                st.session_state.gateway_planning_last_floor_id = selected_floor_id
+                if "selected_plan" in st.session_state:
+                    del st.session_state["selected_plan"]
+                st.rerun()
+            
             selected_floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
             
             st.divider()
@@ -905,6 +915,12 @@ def render_gateway_planning():
                 current_plan = None
             else:
                 current_plan = session.query(GatewayPlan).filter(GatewayPlan.id == selected_plan_key).first()
+                
+                # Validate plan belongs to selected floor - if not, reset selection
+                if current_plan and current_plan.floor_id != selected_floor_id:
+                    if "selected_plan" in st.session_state:
+                        del st.session_state["selected_plan"]
+                    st.rerun()
                 
                 if current_plan:
                     st.caption(f"Plan configuration: ±{current_plan.target_accuracy}m accuracy, {current_plan.signal_range}m signal range")
