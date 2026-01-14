@@ -5,6 +5,10 @@ port = 5000
 maxUploadSize = 50
 enableXsrfProtection = false
 enableCORS = false
+enableWebsocketCompression = false
+
+[browser]
+gatherUsageStats = false
 
 [theme]
 primaryColor = "#2563eb"
