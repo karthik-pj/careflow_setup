@@ -3,7 +3,15 @@ from database import get_db_session, Building, Floor, Gateway
 from datetime import datetime
 import re
 import json
+import math
 import plotly.graph_objects as go
+
+
+def meters_to_latlon(x, y, origin_lat, origin_lon):
+    """Convert local meter coordinates back to lat/lon"""
+    lat = origin_lat + (y / 111000)
+    lon = origin_lon + (x / (math.cos(math.radians(origin_lat)) * 111000))
+    return lat, lon
 
 
 def validate_mac_address(mac: str) -> bool:
@@ -138,22 +146,41 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None):
                 hovertemplate="<b>%{text}</b><br>Gateway<extra></extra>"
             ))
     
+    # Apply focus area if set (convert from meters to lat/lon)
+    x_range = None
+    y_range = None
+    if floor.focus_min_x is not None and floor.origin_lat and floor.origin_lon:
+        min_lat, min_lon = meters_to_latlon(floor.focus_min_x - 1, floor.focus_min_y - 1, floor.origin_lat, floor.origin_lon)
+        max_lat, max_lon = meters_to_latlon(floor.focus_max_x + 1, floor.focus_max_y + 1, floor.origin_lat, floor.origin_lon)
+        x_range = [min_lon, max_lon]
+        y_range = [min_lat, max_lat]
+    
+    xaxis_config = dict(
+        scaleanchor='y',
+        scaleratio=1,
+        showgrid=False,
+        zeroline=False,
+        showticklabels=False,
+        title='',
+        constrain='domain'
+    )
+    yaxis_config = dict(
+        showgrid=False,
+        zeroline=False,
+        showticklabels=False,
+        title='',
+        constrain='domain'
+    )
+    
+    if x_range:
+        xaxis_config['range'] = x_range
+    if y_range:
+        yaxis_config['range'] = y_range
+    
     fig.update_layout(
         showlegend=False,
-        xaxis=dict(
-            scaleanchor='y',
-            scaleratio=1,
-            showgrid=False,
-            zeroline=False,
-            showticklabels=False,
-            title=''
-        ),
-        yaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            showticklabels=False,
-            title=''
-        ),
+        xaxis=xaxis_config,
+        yaxis=yaxis_config,
         margin=dict(l=10, r=10, t=10, b=10),
         height=400,
         plot_bgcolor='white'
