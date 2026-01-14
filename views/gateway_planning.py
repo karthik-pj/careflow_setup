@@ -1098,7 +1098,8 @@ def render_gateway_planning():
                         showgrid=not has_floor_plan,
                         gridwidth=1,
                         gridcolor='rgba(0,0,0,0.1)',
-                        zeroline=False
+                        zeroline=False,
+                        constrain='domain'
                     ),
                     yaxis=dict(
                         title="Y (meters)",
@@ -1106,7 +1107,8 @@ def render_gateway_planning():
                         showgrid=not has_floor_plan,
                         gridwidth=1,
                         gridcolor='rgba(0,0,0,0.1)',
-                        zeroline=False
+                        zeroline=False,
+                        constrain='domain'
                     ),
                     showlegend=True,
                     legend=dict(
