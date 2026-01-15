@@ -252,17 +252,34 @@ def render_buildings():
                             new_address = st.text_input("Address", value=building.address or "", key=f"edit_addr_{building.id}")
                             new_desc = st.text_area("Description", value=building.description or "", key=f"edit_desc_{building.id}", height=80)
                             
-                            st.markdown("**GPS Boundary Coordinates**")
+                            st.markdown("**GPS Location**")
+                            col_lat, col_lon = st.columns(2)
+                            with col_lat:
+                                new_lat = st.number_input(
+                                    "Latitude",
+                                    value=float(building.latitude) if building.latitude else 0.0,
+                                    format="%.8f",
+                                    key=f"edit_lat_{building.id}"
+                                )
+                            with col_lon:
+                                new_lon = st.number_input(
+                                    "Longitude", 
+                                    value=float(building.longitude) if building.longitude else 0.0,
+                                    format="%.8f",
+                                    key=f"edit_lon_{building.id}"
+                                )
+                            
+                            st.markdown("**Boundary Coordinates** (optional)")
                             current_coords = format_coords_for_display(building.boundary_coords) if building.boundary_coords else ""
                             if current_coords == "Not set":
                                 current_coords = ""
                             new_gps = st.text_area(
-                                "GPS Coordinates",
+                                "Multiple boundary points",
                                 value=current_coords,
-                                placeholder="53.8578°,10.6712° 53.8580°,10.6706°",
-                                help="Enter latitude,longitude pairs separated by spaces",
+                                placeholder="53.8578,10.6712 53.8580,10.6706",
+                                help="For building outline. Enter lat,lon pairs separated by spaces",
                                 key=f"edit_gps_{building.id}",
-                                height=80
+                                height=60
                             )
                             
                             if st.button("Save Changes", key=f"save_building_{building.id}", type="primary"):
@@ -270,10 +287,19 @@ def render_buildings():
                                 building.address = new_address
                                 building.description = new_desc
                                 
-                                coord_pairs, center_lat, center_lon = parse_gps_coordinates(new_gps)
-                                building.boundary_coords = json.dumps(coord_pairs) if coord_pairs else None
-                                building.latitude = center_lat
-                                building.longitude = center_lon
+                                # Use direct lat/lon if provided
+                                if new_lat != 0.0 or new_lon != 0.0:
+                                    building.latitude = new_lat
+                                    building.longitude = new_lon
+                                
+                                # Also parse boundary coords if provided
+                                if new_gps.strip():
+                                    coord_pairs, center_lat, center_lon = parse_gps_coordinates(new_gps)
+                                    building.boundary_coords = json.dumps(coord_pairs) if coord_pairs else None
+                                    # Only override lat/lon if not directly set
+                                    if new_lat == 0.0 and new_lon == 0.0 and center_lat:
+                                        building.latitude = center_lat
+                                        building.longitude = center_lon
                                 
                                 session.commit()
                                 set_success_and_rerun(f"Building '{new_name}' updated!")
