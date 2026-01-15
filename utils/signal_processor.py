@@ -12,6 +12,13 @@ from utils.triangulation import GatewayReading, trilaterate_2d, calculate_veloci
 from utils.mqtt_publisher import get_mqtt_publisher
 
 
+def normalize_mac_address(mac: str) -> str:
+    """Normalize MAC address to uppercase without colons for comparison"""
+    if not mac:
+        return ""
+    return mac.upper().replace(":", "").replace("-", "")
+
+
 def determine_floor_from_signals(gateway_signals: Dict[int, Any], session) -> Tuple[int, float]:
     """Determine the most likely floor for a beacon based on signal strengths from gateways.
     
@@ -312,9 +319,13 @@ class SignalProcessor:
                 if not gateway:
                     return
                 
-                beacon = session.query(Beacon).filter(
-                    Beacon.mac_address == msg.beacon_mac
-                ).first()
+                normalized_beacon_mac = normalize_mac_address(msg.beacon_mac)
+                all_beacons = session.query(Beacon).all()
+                beacon = None
+                for b in all_beacons:
+                    if normalize_mac_address(b.mac_address) == normalized_beacon_mac:
+                        beacon = b
+                        break
                 
                 if not beacon:
                     mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
