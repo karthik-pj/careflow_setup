@@ -240,6 +240,38 @@ def render_buildings():
                         st.write(f"**Floors:** {floor_count}")
                     
                     with col3:
+                        with st.popover("Edit"):
+                            st.markdown("**Edit Building**")
+                            new_name = st.text_input("Building Name", value=building.name, key=f"edit_name_{building.id}")
+                            new_address = st.text_input("Address", value=building.address or "", key=f"edit_addr_{building.id}")
+                            new_desc = st.text_area("Description", value=building.description or "", key=f"edit_desc_{building.id}", height=80)
+                            
+                            st.markdown("**GPS Boundary Coordinates**")
+                            current_coords = format_coords_for_display(building.boundary_coords) if building.boundary_coords else ""
+                            if current_coords == "Not set":
+                                current_coords = ""
+                            new_gps = st.text_area(
+                                "GPS Coordinates",
+                                value=current_coords,
+                                placeholder="53.8578°,10.6712° 53.8580°,10.6706°",
+                                help="Enter latitude,longitude pairs separated by spaces",
+                                key=f"edit_gps_{building.id}",
+                                height=80
+                            )
+                            
+                            if st.button("Save Changes", key=f"save_building_{building.id}", type="primary"):
+                                building.name = new_name
+                                building.address = new_address
+                                building.description = new_desc
+                                
+                                coord_pairs, center_lat, center_lon = parse_gps_coordinates(new_gps)
+                                building.boundary_coords = json.dumps(coord_pairs) if coord_pairs else None
+                                building.latitude = center_lat
+                                building.longitude = center_lon
+                                
+                                session.commit()
+                                set_success_and_rerun(f"Building '{new_name}' updated!")
+                        
                         if st.button("Delete", key=f"del_building_{building.id}", type="secondary"):
                             building_name = building.name
                             session.delete(building)
@@ -563,7 +595,50 @@ def render_floor_plans():
                                 except:
                                     pass
                             
-                            with st.popover("Edit 3D Settings"):
+                            with st.popover("Edit Floor Settings"):
+                                st.markdown("**Floor Properties**")
+                                new_floor_name = st.text_input(
+                                    "Floor Name",
+                                    value=floor.name or "",
+                                    key=f"fn_{floor.id}"
+                                )
+                                new_floor_number = st.number_input(
+                                    "Floor Number",
+                                    value=int(floor.floor_number),
+                                    step=1,
+                                    key=f"fnum_{floor.id}"
+                                )
+                                
+                                st.markdown("**GPS Origin (Southwest Corner)**")
+                                st.caption("Set the GPS coordinates of the floor plan origin point")
+                                new_origin_lat = st.number_input(
+                                    "Origin Latitude",
+                                    value=float(floor.origin_lat or 0.0),
+                                    format="%.6f",
+                                    key=f"olat_{floor.id}"
+                                )
+                                new_origin_lon = st.number_input(
+                                    "Origin Longitude",
+                                    value=float(floor.origin_lon or 0.0),
+                                    format="%.6f",
+                                    key=f"olon_{floor.id}"
+                                )
+                                
+                                st.markdown("**Dimensions**")
+                                new_width = st.number_input(
+                                    "Width (meters)",
+                                    value=float(floor.width_meters or 50.0),
+                                    min_value=1.0,
+                                    key=f"fw_{floor.id}"
+                                )
+                                new_height_m = st.number_input(
+                                    "Height (meters)",
+                                    value=float(floor.height_meters or 50.0),
+                                    min_value=1.0,
+                                    key=f"fhm_{floor.id}"
+                                )
+                                
+                                st.markdown("**3D Settings**")
                                 new_height = st.number_input(
                                     "Floor Height (m)", 
                                     value=float(floor_height), 
@@ -583,12 +658,19 @@ def render_floor_plans():
                                     key=f"fa_{floor.id}",
                                     help="Signal loss through floor/ceiling (typical: 10-20 dB)"
                                 )
-                                if st.button("Save 3D Settings", key=f"save3d_{floor.id}", type="primary"):
+                                
+                                if st.button("Save Floor Settings", key=f"save_floor_{floor.id}", type="primary"):
+                                    floor.name = new_floor_name
+                                    floor.floor_number = new_floor_number
+                                    floor.origin_lat = new_origin_lat if new_origin_lat != 0.0 else None
+                                    floor.origin_lon = new_origin_lon if new_origin_lon != 0.0 else None
+                                    floor.width_meters = new_width
+                                    floor.height_meters = new_height_m
                                     floor.floor_height_meters = new_height
                                     floor.floor_elevation_meters = new_elevation
                                     floor.inter_floor_attenuation_db = new_atten
                                     session.commit()
-                                    set_success_and_rerun("3D settings updated")
+                                    set_success_and_rerun("Floor settings updated!")
                             
                             if st.button("Delete", key=f"del_floor_{floor.id}", type="secondary"):
                                 session.delete(floor)
