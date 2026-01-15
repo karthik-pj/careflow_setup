@@ -434,34 +434,36 @@ def render():
                             session.commit()
                             st.rerun()
                         
-                        delete_key = f"confirm_delete_{gw.id}"
-                        if delete_key not in st.session_state:
-                            st.session_state[delete_key] = False
-                        
-                        if not st.session_state[delete_key]:
-                            if st.button("Delete", key=f"del_gw_{gw.id}", type="secondary"):
-                                st.session_state[delete_key] = True
-                                st.rerun()
-                        else:
-                            st.warning("Confirm delete?")
-                            col_yes, col_no = st.columns(2)
-                            with col_yes:
-                                if st.button("Yes", key=f"yes_del_{gw.id}"):
-                                    try:
-                                        del_session = get_session()
-                                        gw_to_del = del_session.query(Gateway).filter(Gateway.id == gw.id).first()
-                                        if gw_to_del:
-                                            del_session.delete(gw_to_del)
-                                            del_session.commit()
-                                        del_session.close()
-                                        st.session_state[delete_key] = False
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Delete failed: {e}")
-                            with col_no:
-                                if st.button("No", key=f"no_del_{gw.id}"):
-                                    st.session_state[delete_key] = False
-                                    st.rerun()
+                        if st.button("🗑️ Delete", key=f"del_gw_{gw.id}", type="secondary"):
+                            st.session_state['pending_delete_gw_id'] = gw.id
+                            st.session_state['pending_delete_gw_name'] = gw.name
+            
+            # Show delete confirmation outside the gateway loop but inside gateways block
+            if 'pending_delete_gw_id' in st.session_state:
+                pending_id = st.session_state['pending_delete_gw_id']
+                pending_name = st.session_state.get('pending_delete_gw_name', 'Gateway')
+                st.warning(f"⚠️ Are you sure you want to delete gateway '{pending_name}'?")
+                col_yes, col_no, _ = st.columns([1, 1, 4])
+                with col_yes:
+                    if st.button("✅ Yes, Delete", key="confirm_delete_yes", type="primary"):
+                        try:
+                            del_session = get_session()
+                            gw_to_del = del_session.query(Gateway).filter(Gateway.id == pending_id).first()
+                            if gw_to_del:
+                                del_session.delete(gw_to_del)
+                                del_session.commit()
+                                st.session_state['gateways_success_msg'] = f"Gateway '{pending_name}' deleted"
+                            del_session.close()
+                            del st.session_state['pending_delete_gw_id']
+                            del st.session_state['pending_delete_gw_name']
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Delete failed: {e}")
+                with col_no:
+                    if st.button("❌ Cancel", key="confirm_delete_no"):
+                        del st.session_state['pending_delete_gw_id']
+                        del st.session_state['pending_delete_gw_name']
+                        st.rerun()
         
         else:
             st.info("No gateways configured yet. Add your first gateway above.")
