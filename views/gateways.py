@@ -146,14 +146,21 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None):
                 hovertemplate="<b>%{text}</b><br>Gateway<extra></extra>"
             ))
     
-    # Apply focus area if set (convert from meters to lat/lon)
+    # Apply focus area if set
     x_range = None
     y_range = None
-    if floor.focus_min_x is not None and floor.origin_lat is not None and floor.origin_lon is not None:
-        min_lat, min_lon = meters_to_latlon(floor.focus_min_x - 1, floor.focus_min_y - 1, floor.origin_lat, floor.origin_lon)
-        max_lat, max_lon = meters_to_latlon(floor.focus_max_x + 1, floor.focus_max_y + 1, floor.origin_lat, floor.origin_lon)
-        x_range = [min_lon, max_lon]
-        y_range = [min_lat, max_lat]
+    if floor.focus_min_x is not None:
+        # Check if floor uses GPS coordinates (non-zero origin) or meter coordinates (origin at 0,0)
+        if floor.origin_lat and floor.origin_lon:
+            # Convert from meters to lat/lon for GPS-based floors
+            min_lat, min_lon = meters_to_latlon(floor.focus_min_x - 1, floor.focus_min_y - 1, floor.origin_lat, floor.origin_lon)
+            max_lat, max_lon = meters_to_latlon(floor.focus_max_x + 1, floor.focus_max_y + 1, floor.origin_lat, floor.origin_lon)
+            x_range = [min_lon, max_lon]
+            y_range = [min_lat, max_lat]
+        else:
+            # Use meter coordinates directly for floors with origin at (0,0)
+            x_range = [floor.focus_min_x - 1, floor.focus_max_x + 1]
+            y_range = [floor.focus_min_y - 1, floor.focus_max_y + 1]
     
     xaxis_config = dict(
         scaleanchor='y',
