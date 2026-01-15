@@ -149,7 +149,7 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None):
     # Apply focus area if set (convert from meters to lat/lon)
     x_range = None
     y_range = None
-    if floor.focus_min_x is not None and floor.origin_lat and floor.origin_lon:
+    if floor.focus_min_x is not None and floor.origin_lat is not None and floor.origin_lon is not None:
         min_lat, min_lon = meters_to_latlon(floor.focus_min_x - 1, floor.focus_min_y - 1, floor.origin_lat, floor.origin_lon)
         max_lat, max_lon = meters_to_latlon(floor.focus_max_x + 1, floor.focus_max_y + 1, floor.origin_lat, floor.origin_lon)
         x_range = [min_lon, max_lon]
