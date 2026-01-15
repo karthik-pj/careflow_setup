@@ -201,6 +201,16 @@ def create_floor_plan_base(floor):
     if not has_floor_plan and floor.floor_plan_type == 'dxf' and floor.floor_plan_geojson:
         has_floor_plan = render_dxf_floor_plan(fig, floor)
     
+    # Determine axis ranges - use focus area if defined, otherwise use floor dimensions
+    if floor.focus_min_x is not None and floor.focus_max_x is not None:
+        # Add small padding around focus area
+        padding = 1.0
+        x_range = [floor.focus_min_x - padding, floor.focus_max_x + padding]
+        y_range = [floor.focus_min_y - padding, floor.focus_max_y + padding]
+    else:
+        x_range = [0, floor.width_meters]
+        y_range = [0, floor.height_meters]
+    
     fig.update_layout(
         xaxis=dict(
             title="X (meters)",
@@ -208,7 +218,7 @@ def create_floor_plan_base(floor):
             zeroline=False,
             constrain='domain',
             autorange=False,
-            range=[0, floor.width_meters]
+            range=x_range
         ),
         yaxis=dict(
             title="Y (meters)",
@@ -217,7 +227,7 @@ def create_floor_plan_base(floor):
             scaleanchor="x",
             scaleratio=1,
             autorange=False,
-            range=[0, floor.height_meters]
+            range=y_range
         ),
         showlegend=True,
         legend=dict(x=1.02, y=1, bgcolor='rgba(255,255,255,0.8)'),
