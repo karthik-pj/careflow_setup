@@ -446,12 +446,15 @@ def render():
             col_yes, col_no, _ = st.columns([1, 1, 4])
             with col_yes:
                 if st.button("✅ Yes, Delete", key="confirm_delete_yes", type="primary"):
-                    # Delete using direct SQL to avoid session issues
+                    # Delete using direct SQL - first delete related signals
                     from sqlalchemy import text
                     try:
+                        # Delete related RSSI signals first
+                        session.execute(text(f"DELETE FROM rssi_signals WHERE gateway_id = {pending_id}"))
+                        # Then delete the gateway
                         session.execute(text(f"DELETE FROM gateways WHERE id = {pending_id}"))
                         session.commit()
-                        st.session_state['gateways_success_msg'] = f"Gateway '{pending_name}' deleted"
+                        st.session_state['gateways_success_msg'] = f"Gateway '{pending_name}' deleted (including related signals)"
                         del st.session_state['pending_delete_gw_id']
                         if 'pending_delete_gw_name' in st.session_state:
                             del st.session_state['pending_delete_gw_name']
