@@ -1,5 +1,5 @@
 import streamlit as st
-from database import get_db_session, Building, Floor, Gateway
+from database import get_db_session, get_session, Building, Floor, Gateway
 from datetime import datetime
 import re
 import json
@@ -198,12 +198,17 @@ def render():
     # Handle gateway deletion first (before main session)
     if 'delete_gateway_id' in st.session_state:
         gw_id = st.session_state.pop('delete_gateway_id')
-        gw_name = st.session_state.pop('delete_gateway_name')
-        with get_db_session() as del_session:
+        gw_name = st.session_state.pop('delete_gateway_name', 'Gateway')
+        try:
+            del_session = get_session()
             gw_to_delete = del_session.query(Gateway).filter(Gateway.id == gw_id).first()
             if gw_to_delete:
                 del_session.delete(gw_to_delete)
-        st.success(f"Gateway '{gw_name}' deleted")
+                del_session.commit()
+                st.success(f"Gateway '{gw_name}' deleted")
+            del_session.close()
+        except Exception as e:
+            st.error(f"Error deleting gateway: {e}")
     
     with get_db_session() as session:
         buildings = session.query(Building).order_by(Building.name).all()
