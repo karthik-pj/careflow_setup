@@ -28,13 +28,19 @@ def parse_gps_coordinates(coord_string):
     - "53.8578°,10.6712° 53.8580°,10.6706°" (pairs separated by space)
     - "53.8578,10.6712 53.8580,10.6706" (without degree symbols)
     - "53.8578°, 10.6712°; 53.8580°, 10.6706°" (semicolon separated)
+    - "(53.8578, 10.6712)" (with parentheses and spaces)
+    - "53.8578, 10.6712" (single pair with space after comma)
     
     Returns list of (lat, lon) tuples and calculates centroid
     """
     if not coord_string or not coord_string.strip():
         return [], None, None
     
-    cleaned = coord_string.replace('°', '').replace(';', ' ').strip()
+    # Remove parentheses, degree symbols, and normalize separators
+    cleaned = coord_string.replace('°', '').replace(';', ' ').replace('(', '').replace(')', '').strip()
+    
+    # Handle "lat, lon" format (space after comma) - normalize to "lat,lon"
+    cleaned = re.sub(r',\s+', ',', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned)
     
     pairs = []
