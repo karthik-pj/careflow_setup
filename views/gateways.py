@@ -5,6 +5,7 @@ import re
 import json
 import math
 import plotly.graph_objects as go
+from streamlit_plotly_events import plotly_events
 
 
 def meters_to_latlon(x, y, origin_lat, origin_lon):
@@ -228,6 +229,19 @@ def render():
         selected_floor_key = st.selectbox("Select Floor*", options=list(floor_options.keys()))
         selected_floor_id = floor_options[selected_floor_key]
         
+        # Clear clicked position when floor changes to prevent stale coordinates
+        if 'gw_last_floor_id' not in st.session_state:
+            st.session_state['gw_last_floor_id'] = selected_floor_id
+        elif st.session_state['gw_last_floor_id'] != selected_floor_id:
+            # Floor changed - clear clicked coordinates
+            st.session_state['gw_last_floor_id'] = selected_floor_id
+            if 'gw_clicked_x' in st.session_state:
+                del st.session_state['gw_clicked_x']
+            if 'gw_clicked_y' in st.session_state:
+                del st.session_state['gw_clicked_y']
+            if 'gw_has_clicked' in st.session_state:
+                del st.session_state['gw_has_clicked']
+        
         selected_floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
         
         existing_gateways = session.query(Gateway).filter(
@@ -238,11 +252,36 @@ def render():
         if selected_floor and selected_floor.floor_plan_geojson:
             rooms = extract_rooms_from_geojson(selected_floor.floor_plan_geojson)
             
-            st.markdown("#### Floor Plan - Select Room for Gateway Position")
-            st.caption("View the floor plan below. Select a room from the dropdown to auto-fill coordinates.")
+            st.markdown("#### Floor Plan - Click to Place Gateway")
+            st.caption("👆 **Click on the floor plan** to select the exact gateway position, or use the options below.")
             
             fig = create_floor_plan_figure(selected_floor, existing_gateways, rooms)
-            st.plotly_chart(fig, use_container_width=True, key="gateway_floor_plan")
+            
+            # Use plotly_events to capture click position
+            click_data = plotly_events(fig, click_event=True, key="gateway_click_map")
+            
+            # Process click data
+            if click_data and len(click_data) > 0:
+                clicked_x = click_data[0].get('x')
+                clicked_y = click_data[0].get('y')
+                if clicked_x is not None and clicked_y is not None:
+                    # Store clicked position in session state with floor-scoped keys
+                    st.session_state['gw_clicked_x'] = clicked_x
+                    st.session_state['gw_clicked_y'] = clicked_y
+                    st.session_state['gw_has_clicked'] = True
+            
+            # Display clicked position if available
+            if 'gw_clicked_x' in st.session_state and 'gw_clicked_y' in st.session_state:
+                clicked_x = st.session_state['gw_clicked_x']
+                clicked_y = st.session_state['gw_clicked_y']
+                
+                # Determine if coordinates are in meters or lat/lon
+                if selected_floor.origin_lat and selected_floor.origin_lon:
+                    # Floor uses GPS coordinates - clicked values are lat/lon
+                    st.success(f"📍 Selected position: Lat {clicked_y:.6f}, Lon {clicked_x:.6f}")
+                else:
+                    # Floor uses meter coordinates directly
+                    st.success(f"📍 Selected position: X = {clicked_x:.2f}m, Y = {clicked_y:.2f}m")
         
         col1, col2 = st.columns(2)
         
@@ -288,9 +327,14 @@ def render():
         
         st.markdown("#### Gateway Position")
         
+        # Determine available position methods
+        position_options = ["Click on Floor Plan", "Select Room", "Enter Coordinates Manually"]
+        if not rooms:
+            position_options = ["Click on Floor Plan", "Enter Coordinates Manually"]
+        
         position_method = st.radio(
             "Position Method",
-            ["Select Room", "Enter Coordinates Manually"],
+            position_options,
             horizontal=True,
             help="Choose how to specify the gateway position"
         )
@@ -300,7 +344,40 @@ def render():
         x_position = 0.0
         y_position = 0.0
         
-        if position_method == "Select Room" and rooms:
+        # Handle "Click on Floor Plan" position method
+        has_clicked = st.session_state.get('gw_has_clicked', False)
+        
+        if position_method == "Click on Floor Plan":
+            if has_clicked and 'gw_clicked_x' in st.session_state and 'gw_clicked_y' in st.session_state:
+                clicked_x = st.session_state['gw_clicked_x']
+                clicked_y = st.session_state['gw_clicked_y']
+                
+                # Check if floor uses GPS or meter coordinates
+                if selected_floor.origin_lat and selected_floor.origin_lon:
+                    # Floor uses GPS - clicked values are lat/lon
+                    latitude = clicked_y
+                    longitude = clicked_x
+                    # Calculate meter positions from origin
+                    lat_diff = latitude - selected_floor.origin_lat
+                    lon_diff = longitude - selected_floor.origin_lon
+                    y_position = lat_diff * 111000
+                    x_position = lon_diff * 111000 * abs(math.cos(math.radians(latitude)))
+                else:
+                    # Floor uses meter coordinates directly
+                    x_position = clicked_x
+                    y_position = clicked_y
+                    # Convert meters to lat/lon if origin is set (even if 0)
+                    if selected_floor.origin_lat is not None and selected_floor.origin_lon is not None:
+                        latitude, longitude = meters_to_latlon(x_position, y_position, 
+                                                               selected_floor.origin_lat, selected_floor.origin_lon)
+                
+                st.info(f"Position: X = {x_position:.2f}m, Y = {y_position:.2f}m")
+                if latitude != 0 or longitude != 0:
+                    st.info(f"GPS: {latitude:.6f}, {longitude:.6f}")
+            else:
+                st.warning("👆 Click on the floor plan above to select a position")
+        
+        elif position_method == "Select Room" and rooms:
             room_options = ["-- Select a room --"] + [r['name'] for r in rooms]
             selected_room = st.selectbox("Select Room*", options=room_options)
             
@@ -360,6 +437,17 @@ def render():
                     help="Position from bottom edge of floor plan"
                 )
         
+        # Installation height
+        st.markdown("#### Installation Height")
+        z_position = st.number_input(
+            "Installation Height (meters)",
+            value=2.5,
+            min_value=0.0,
+            max_value=10.0,
+            step=0.1,
+            help="Height of the gateway/anchor installation from the floor level (typically 2-3m)"
+        )
+        
         description = st.text_area(
             "Description",
             placeholder="Describe the gateway location..."
@@ -376,6 +464,8 @@ def render():
                 st.error("Invalid MAC address format. Use AA:BB:CC:DD:EE:FF")
             elif position_method == "Select Room" and (latitude == 0 and longitude == 0):
                 st.error("Please select a room for the gateway position")
+            elif position_method == "Click on Floor Plan" and not has_clicked:
+                st.error("Please click on the floor plan to select a position")
             else:
                 existing = session.query(Gateway).filter(
                     Gateway.mac_address == mac_address
@@ -392,6 +482,7 @@ def render():
                         description=description,
                         x_position=x_position,
                         y_position=y_position,
+                        z_position=z_position,
                         latitude=latitude if latitude != 0 else None,
                         longitude=longitude if longitude != 0 else None,
                         mqtt_topic=mqtt_topic or None,
@@ -402,6 +493,13 @@ def render():
                     )
                     session.add(gateway)
                     session.commit()
+                    # Clear clicked position from session state
+                    if 'gw_clicked_x' in st.session_state:
+                        del st.session_state['gw_clicked_x']
+                    if 'gw_clicked_y' in st.session_state:
+                        del st.session_state['gw_clicked_y']
+                    if 'gw_has_clicked' in st.session_state:
+                        del st.session_state['gw_has_clicked']
                     set_success_and_rerun(f"Gateway '{name}' added successfully!")
         
         st.markdown("---")
@@ -422,7 +520,8 @@ def render():
                     with col1:
                         st.write(f"**Building:** {building.name if building else 'Unknown'}")
                         st.write(f"**Floor:** {floor.name if floor else 'Unknown'}")
-                        st.write(f"**Position:** ({gw.x_position:.1f}m, {gw.y_position:.1f}m)")
+                        z_height = gw.z_position if gw.z_position else 2.5
+                        st.write(f"**Position:** ({gw.x_position:.1f}m, {gw.y_position:.1f}m, H: {z_height:.1f}m)")
                         if gw.latitude and gw.longitude:
                             st.write(f"**GPS:** {gw.latitude:.6f}, {gw.longitude:.6f}")
                         if gw.wifi_ssid:

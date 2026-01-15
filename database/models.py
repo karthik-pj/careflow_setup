@@ -80,6 +80,7 @@ class Gateway(Base):
     description = Column(Text)
     x_position = Column(Float, nullable=False)
     y_position = Column(Float, nullable=False)
+    z_position = Column(Float, default=2.5)  # Installation height in meters from floor level
     latitude = Column(Float)
     longitude = Column(Float)
     mqtt_topic = Column(String(255))
