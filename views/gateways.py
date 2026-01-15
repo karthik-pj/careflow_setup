@@ -195,6 +195,16 @@ def render():
     
     show_pending_message()
     
+    # Handle gateway deletion first (before main session)
+    if 'delete_gateway_id' in st.session_state:
+        gw_id = st.session_state.pop('delete_gateway_id')
+        gw_name = st.session_state.pop('delete_gateway_name')
+        with get_db_session() as del_session:
+            gw_to_delete = del_session.query(Gateway).filter(Gateway.id == gw_id).first()
+            if gw_to_delete:
+                del_session.delete(gw_to_delete)
+        st.success(f"Gateway '{gw_name}' deleted")
+    
     with get_db_session() as session:
         buildings = session.query(Building).order_by(Building.name).all()
         
@@ -435,9 +445,9 @@ def render():
                             st.rerun()
                         
                         if st.button("Delete", key=f"del_gw_{gw.id}", type="secondary"):
-                            gw_name = gw.name
-                            session.delete(gw)
-                            session.commit()
-                            set_success_and_rerun(f"Gateway '{gw_name}' deleted")
+                            st.session_state['delete_gateway_id'] = gw.id
+                            st.session_state['delete_gateway_name'] = gw.name
+                            st.rerun()
+        
         else:
             st.info("No gateways configured yet. Add your first gateway above.")
