@@ -201,15 +201,21 @@ def create_floor_plan_base(floor):
     if not has_floor_plan and floor.floor_plan_type == 'dxf' and floor.floor_plan_geojson:
         has_floor_plan = render_dxf_floor_plan(fig, floor)
     
-    # Determine axis ranges - use focus area if defined, otherwise use floor dimensions
-    if floor.focus_min_x is not None and floor.focus_max_x is not None:
-        # Add small padding around focus area
+    # Determine axis ranges - use focus area if all values defined, otherwise use floor dimensions
+    has_focus_area = (
+        floor.focus_min_x is not None and 
+        floor.focus_max_x is not None and
+        floor.focus_min_y is not None and 
+        floor.focus_max_y is not None
+    )
+    
+    if has_focus_area:
         padding = 1.0
         x_range = [floor.focus_min_x - padding, floor.focus_max_x + padding]
         y_range = [floor.focus_min_y - padding, floor.focus_max_y + padding]
     else:
-        x_range = [0, floor.width_meters]
-        y_range = [0, floor.height_meters]
+        x_range = [0, floor.width_meters or 50]
+        y_range = [0, floor.height_meters or 50]
     
     fig.update_layout(
         xaxis=dict(
@@ -231,8 +237,8 @@ def create_floor_plan_base(floor):
         ),
         showlegend=True,
         legend=dict(x=1.02, y=1, bgcolor='rgba(255,255,255,0.8)'),
-        margin=dict(l=50, r=150, t=50, b=50),
-        height=600,
+        margin=dict(l=50, r=150, t=30, b=30),
+        height=700,
         plot_bgcolor='rgba(240,240,240,0.3)' if not has_floor_plan else 'rgba(255,255,255,0)',
         uirevision='constant'
     )
@@ -520,7 +526,6 @@ def render_chart_fragment():
 
 def render():
     st.title("Live Tracking")
-    st.markdown("Real-time beacon position tracking with floor plan visualization")
     
     with get_db_session() as session:
         mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
@@ -534,125 +539,82 @@ def render():
             st.warning("No buildings configured. Please add a building first.")
             return
         
-        col1, col2 = st.columns([1, 3])
+        building_options = {b.name: b.id for b in buildings}
+        all_beacons = session.query(Beacon).order_by(Beacon.name).all()
         
-        with col1:
-            st.subheader("Location")
-            
-            building_options = {b.name: b.id for b in buildings}
-            selected_building = st.selectbox("Building", options=list(building_options.keys()))
-            
-            floors = session.query(Floor).filter(
-                Floor.building_id == building_options[selected_building]
-            ).order_by(Floor.floor_number).all()
-            
-            if not floors:
-                st.warning("No floor plans for this building.")
-                return
-            
-            floor_options = {f"Floor {f.floor_number}: {f.name or ''}": f.id for f in floors}
-            selected_floor_name = st.selectbox("Floor", options=list(floor_options.keys()))
+        time_presets = {
+            "5 min": 5,
+            "15 min": 15,
+            "30 min": 30,
+            "1 hour": 60,
+            "2 hours": 120,
+            "4 hours": 240
+        }
+        
+        top_col1, top_col2, top_col3, top_col4, top_col5 = st.columns([2, 2, 2, 2, 2])
+        
+        with top_col1:
+            selected_building = st.selectbox("Building", options=list(building_options.keys()), label_visibility="collapsed")
+        
+        floors = session.query(Floor).filter(
+            Floor.building_id == building_options[selected_building]
+        ).order_by(Floor.floor_number).all()
+        
+        if not floors:
+            st.warning("No floor plans for this building.")
+            return
+        
+        floor_options = {f"Floor {f.floor_number}: {f.name or ''}": f.id for f in floors}
+        
+        with top_col2:
+            selected_floor_name = st.selectbox("Floor", options=list(floor_options.keys()), label_visibility="collapsed")
             selected_floor_id = floor_options[selected_floor_name]
-            
-            st.markdown("---")
-            st.subheader("View Mode")
-            
-            view_mode = st.radio(
-                "Visualization",
+        
+        with top_col3:
+            view_mode = st.selectbox(
+                "View",
                 options=["Current Location", "Spaghetti Map", "Heatmap"],
                 index=0,
-                help="Choose how to display beacon data",
-                key="live_tracking_view_mode"
+                label_visibility="collapsed"
             )
-            
-            st.markdown("---")
-            st.subheader("Time Frame")
-            
-            time_presets = {
-                "Last 5 minutes": 5,
-                "Last 15 minutes": 15,
-                "Last 30 minutes": 30,
-                "Last 1 hour": 60,
-                "Last 2 hours": 120,
-                "Last 4 hours": 240
-            }
-            
+        
+        with top_col4:
             time_selection = st.selectbox(
-                "Time Range",
+                "Time",
                 options=list(time_presets.keys()),
                 index=1,
-                key="live_tracking_time_range"
+                label_visibility="collapsed"
             )
             time_minutes = time_presets[time_selection]
-            
-            st.caption(f"Data from last {time_minutes} min")
-            
-            st.markdown("---")
-            st.subheader("Beacons")
-            
-            all_beacons = session.query(Beacon).order_by(Beacon.name).all()
-            
-            resource_types = list(set([b.resource_type for b in all_beacons if b.resource_type]))
-            resource_types.sort()
-            
-            if resource_types:
-                filter_by_type = st.multiselect(
-                    "Filter by Type",
-                    options=resource_types,
-                    default=[],
-                    help="Filter beacons by resource type"
-                )
-                
-                if filter_by_type:
-                    filtered_beacons = [b for b in all_beacons if b.resource_type in filter_by_type]
-                else:
-                    filtered_beacons = all_beacons
+        
+        with top_col5:
+            if st.button("🔄 Update", type="primary", use_container_width=True):
+                st.rerun()
+        
+        floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
+        
+        if not floor.floor_plan_image and not floor.floor_plan_geojson:
+            st.warning("No floor plan uploaded for this floor.")
+        
+        resource_types = list(set([b.resource_type for b in all_beacons if b.resource_type]))
+        resource_types.sort()
+        
+        if resource_types:
+            filter_by_type = st.session_state.get('filter_by_type', [])
+            if filter_by_type:
+                filtered_beacons = [b for b in all_beacons if b.resource_type in filter_by_type]
             else:
                 filtered_beacons = all_beacons
-            
+        else:
+            filtered_beacons = all_beacons
+        
+        select_all = st.session_state.get('live_tracking_select_all', True)
+        if select_all:
+            selected_beacon_ids = [b.id for b in filtered_beacons]
+        else:
+            selected_beacon_names = st.session_state.get('live_tracking_beacon_select', [])
             beacon_options = {f"{b.name} ({b.mac_address[-8:]})": b.id for b in filtered_beacons}
-            
-            select_all = st.checkbox("Select All Beacons", value=True, key="live_tracking_select_all")
-            
-            if select_all:
-                selected_beacon_ids = [b.id for b in filtered_beacons]
-            else:
-                selected_beacon_names = st.multiselect(
-                    "Select Beacons",
-                    options=list(beacon_options.keys()),
-                    default=[],
-                    key="live_tracking_beacon_select"
-                )
-                selected_beacon_ids = [beacon_options[name] for name in selected_beacon_names]
-            
-            st.caption(f"{len(selected_beacon_ids)} beacon(s) selected")
-            
-            st.markdown("---")
-            st.subheader("Data Refresh")
-            
-            if st.button("🔄 Update Data", type="primary", use_container_width=True, help="Fetch latest beacon positions"):
-                st.rerun()
-            
-            st.caption("Zoom and pan are preserved until you update")
-            
-            auto_refresh = st.checkbox("Auto-refresh", value=False, help="Auto-updates may reset zoom level")
-            if auto_refresh:
-                refresh_interval = st.slider("Refresh (sec)", 2, 10, 3)
-                st.caption("⚠️ Zoom resets on each auto-update")
-            
-            st.markdown("---")
-            st.subheader("Signal Processor")
-            
-            processor = get_signal_processor()
-            processor.check_and_restart()
-            
-            if processor.is_running:
-                st.success("✓ Running")
-            else:
-                st.warning("Stopped")
-                if st.button("Start Processor", type="primary"):
-                    if processor.start():
-                        st.rerun()
+            selected_beacon_ids = [beacon_options[name] for name in selected_beacon_names if name in beacon_options]
         
         st.session_state.chart_params = {
             'floor_id': selected_floor_id,
@@ -661,20 +623,66 @@ def render():
             'time_minutes': time_minutes
         }
         
-        with col2:
-            floor = session.query(Floor).filter(Floor.id == selected_floor_id).first()
+        auto_refresh = st.session_state.get('auto_refresh', False)
+        if auto_refresh:
+            refresh_interval = st.session_state.get('refresh_interval', 3)
             
-            if not floor.floor_plan_image and not floor.floor_plan_geojson:
-                st.warning("No floor plan uploaded for this floor. Please upload a floor plan in the Buildings section.")
-                st.info(f"Current floor dimensions: {floor.width_meters:.1f}m x {floor.height_meters:.1f}m")
-            
-            if auto_refresh:
-                refresh_seconds = refresh_interval
-                
-                @st.fragment(run_every=f"{refresh_seconds}s")
-                def auto_refresh_chart():
-                    render_chart_fragment()
-                
-                auto_refresh_chart()
-            else:
+            @st.fragment(run_every=f"{refresh_interval}s")
+            def auto_refresh_chart():
                 render_chart_fragment()
+            
+            auto_refresh_chart()
+        else:
+            render_chart_fragment()
+        
+        st.markdown("---")
+        
+        ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 3, 2])
+        
+        with ctrl_col1:
+            st.markdown("**Beacons**")
+            select_all = st.checkbox("Select All", value=True, key="live_tracking_select_all")
+            
+            if not select_all:
+                beacon_options = {f"{b.name} ({b.mac_address[-8:]})": b.id for b in filtered_beacons}
+                st.multiselect(
+                    "Select Beacons",
+                    options=list(beacon_options.keys()),
+                    default=[],
+                    key="live_tracking_beacon_select",
+                    label_visibility="collapsed"
+                )
+            
+            if resource_types:
+                st.multiselect(
+                    "Filter by Type",
+                    options=resource_types,
+                    default=[],
+                    key="filter_by_type"
+                )
+            
+            st.caption(f"{len(selected_beacon_ids)} beacon(s)")
+        
+        with ctrl_col2:
+            st.markdown("**Signal Processor**")
+            processor = get_signal_processor()
+            processor.check_and_restart()
+            
+            proc_col1, proc_col2 = st.columns(2)
+            with proc_col1:
+                if processor.is_running:
+                    st.success("Running")
+                else:
+                    st.warning("Stopped")
+            with proc_col2:
+                if not processor.is_running:
+                    if st.button("Start", type="primary"):
+                        if processor.start():
+                            st.rerun()
+        
+        with ctrl_col3:
+            st.markdown("**Auto-refresh**")
+            auto_refresh = st.checkbox("Enable", value=False, key="auto_refresh")
+            if auto_refresh:
+                st.slider("Interval (sec)", 2, 10, 3, key="refresh_interval")
+                st.caption("Zoom resets on update")
