@@ -1,11 +1,43 @@
 import streamlit as st
-from database import get_db_session, get_session, Building, Floor, Gateway
-from datetime import datetime
+from database import get_db_session, get_session, Building, Floor, Gateway, RSSISignal
+from datetime import datetime, timedelta
+from sqlalchemy import func
 import re
 import json
 import math
 import plotly.graph_objects as go
 from streamlit_plotly_events import plotly_events
+
+
+def get_gateway_status(session, gateway_ids, timeout_minutes=2):
+    """
+    Get status for each gateway based on RSSI signal activity.
+    Returns dict: {gateway_id: 'active'|'offline'|'installed'}
+    """
+    if not gateway_ids:
+        return {}
+    
+    cutoff_time = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+    
+    latest_signals = session.query(
+        RSSISignal.gateway_id,
+        func.max(RSSISignal.timestamp).label('last_seen')
+    ).filter(
+        RSSISignal.gateway_id.in_(gateway_ids)
+    ).group_by(RSSISignal.gateway_id).all()
+    
+    signal_times = {sig.gateway_id: sig.last_seen for sig in latest_signals}
+    
+    status = {}
+    for gw_id in gateway_ids:
+        if gw_id not in signal_times:
+            status[gw_id] = 'installed'
+        elif signal_times[gw_id] >= cutoff_time:
+            status[gw_id] = 'active'
+        else:
+            status[gw_id] = 'offline'
+    
+    return status
 
 
 def meters_to_latlon(x, y, origin_lat, origin_lon):
@@ -65,7 +97,7 @@ def extract_rooms_from_geojson(geojson_str):
     return rooms
 
 
-def create_floor_plan_figure(floor, gateways=None, rooms=None, for_click=False):
+def create_floor_plan_figure(floor, gateways=None, rooms=None, for_click=False, gateway_statuses=None):
     """Create a Plotly figure showing the floor plan with rooms and gateways
     
     Args:
@@ -73,7 +105,10 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None, for_click=False):
         gateways: List of gateway objects to display
         rooms: List of room dictionaries
         for_click: If True, adds an invisible click layer for capturing clicks anywhere
+        gateway_statuses: Dict mapping gateway_id to status ('installed', 'active', 'offline')
     """
+    if gateway_statuses is None:
+        gateway_statuses = {}
     fig = go.Figure()
     
     # Track bounds for click layer
@@ -167,26 +202,50 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None, for_click=False):
         ))
     
     if gateways:
-        gw_lons = []
-        gw_lats = []
-        gw_names = []
+        status_colors = {
+            'installed': '#2e5cbf',
+            'active': '#27ae60',
+            'offline': '#e74c3c'
+        }
+        status_labels = {
+            'installed': 'Installed',
+            'active': 'Active', 
+            'offline': 'Offline'
+        }
+        
         for gw in gateways:
             if gw.latitude and gw.longitude:
-                gw_lons.append(gw.longitude)
-                gw_lats.append(gw.latitude)
-                gw_names.append(gw.name)
-        
-        if gw_lons:
-            fig.add_trace(go.Scatter(
-                x=gw_lons,
-                y=gw_lats,
-                mode='markers+text',
-                marker=dict(symbol='square', size=12, color='#e74c3c'),
-                text=gw_names,
-                textposition='top center',
-                name='Gateways',
-                hovertemplate="<b>%{text}</b><br>Gateway<extra></extra>"
-            ))
+                status = gateway_statuses.get(gw.id, 'installed')
+                color = status_colors.get(status, '#2e5cbf')
+                status_label = status_labels.get(status, 'Unknown')
+                
+                fig.add_trace(go.Scatter(
+                    x=[gw.longitude],
+                    y=[gw.latitude],
+                    mode='markers+text',
+                    marker=dict(symbol='square', size=12, color=color),
+                    text=[gw.name],
+                    textposition='top center',
+                    name=gw.name,
+                    showlegend=False,
+                    hovertemplate=f"<b>{gw.name}</b><br>Status: {status_label}<extra></extra>"
+                ))
+            elif gw.x_position is not None and gw.y_position is not None:
+                status = gateway_statuses.get(gw.id, 'installed')
+                color = status_colors.get(status, '#2e5cbf')
+                status_label = status_labels.get(status, 'Unknown')
+                
+                fig.add_trace(go.Scatter(
+                    x=[gw.x_position],
+                    y=[gw.y_position],
+                    mode='markers+text',
+                    marker=dict(symbol='square', size=12, color=color),
+                    text=[gw.name],
+                    textposition='top center',
+                    name=gw.name,
+                    showlegend=False,
+                    hovertemplate=f"<b>{gw.name}</b><br>Status: {status_label}<extra></extra>"
+                ))
     
     # Apply focus area if set
     x_range = None
@@ -291,6 +350,9 @@ def render():
             Gateway.floor_id == selected_floor_id
         ).all()
         
+        gateway_ids = [gw.id for gw in existing_gateways]
+        gateway_statuses = get_gateway_status(session, gateway_ids)
+        
         rooms = []
         if selected_floor and selected_floor.floor_plan_geojson:
             rooms = extract_rooms_from_geojson(selected_floor.floor_plan_geojson)
@@ -298,7 +360,7 @@ def render():
             st.markdown("#### Floor Plan - Click to Place Gateway")
             st.caption("👆 **Click on the floor plan** to select the exact gateway position, or use the options below.")
             
-            fig = create_floor_plan_figure(selected_floor, existing_gateways, rooms, for_click=True)
+            fig = create_floor_plan_figure(selected_floor, existing_gateways, rooms, for_click=True, gateway_statuses=gateway_statuses)
             
             # Use plotly_events to capture click position
             # override_height is required for reliable click detection

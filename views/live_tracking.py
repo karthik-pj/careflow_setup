@@ -5,12 +5,47 @@ from utils.signal_processor import get_signal_processor
 from datetime import datetime, timedelta
 from io import BytesIO
 from PIL import Image
+from sqlalchemy import func
 import plotly.graph_objects as go
 import numpy as np
 import time
 import base64
 import json
 import math
+
+
+def get_gateway_status(session, gateway_ids, timeout_minutes=2):
+    """
+    Get status for each gateway based on RSSI signal activity.
+    Returns dict: {gateway_id: 'active'|'offline'|'installed'}
+    - active (green): received data within timeout_minutes
+    - offline (red): received data before but not within timeout_minutes  
+    - installed (blue): never received any data
+    """
+    if not gateway_ids:
+        return {}
+    
+    cutoff_time = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+    
+    latest_signals = session.query(
+        RSSISignal.gateway_id,
+        func.max(RSSISignal.timestamp).label('last_seen')
+    ).filter(
+        RSSISignal.gateway_id.in_(gateway_ids)
+    ).group_by(RSSISignal.gateway_id).all()
+    
+    signal_times = {sig.gateway_id: sig.last_seen for sig in latest_signals}
+    
+    status = {}
+    for gw_id in gateway_ids:
+        if gw_id not in signal_times:
+            status[gw_id] = 'installed'
+        elif signal_times[gw_id] >= cutoff_time:
+            status[gw_id] = 'active'
+        else:
+            status[gw_id] = 'offline'
+    
+    return status
 
 
 def latlon_to_meters(lat, lon, origin_lat, origin_lon):
@@ -247,20 +282,35 @@ def create_floor_plan_base(floor):
 
 
 def add_gateways_to_figure(fig, gateways_data):
-    """Add gateway markers to the figure"""
+    """Add gateway markers to the figure with status-based colors"""
+    status_colors = {
+        'installed': '#2e5cbf',
+        'active': '#27ae60',
+        'offline': '#e74c3c'
+    }
+    status_labels = {
+        'installed': 'Installed',
+        'active': 'Active',
+        'offline': 'Offline'
+    }
+    
     for gw in gateways_data:
+        status = gw.get('status', 'installed')
+        color = status_colors.get(status, '#2e5cbf')
+        status_label = status_labels.get(status, 'Unknown')
+        
         fig.add_trace(go.Scatter(
             x=[gw['x']],
             y=[gw['y']],
             mode='markers+text',
-            marker=dict(size=18, color='#2e5cbf', symbol='square', 
+            marker=dict(size=18, color=color, symbol='square', 
                        line=dict(width=2, color='white')),
             text=[gw['name']],
             textposition='top center',
-            textfont=dict(size=10, color='#2e5cbf'),
+            textfont=dict(size=10, color=color),
             name=f"Gateway: {gw['name']}",
             hoverinfo='text',
-            hovertext=f"<b>Gateway: {gw['name']}</b><br>Position: ({gw['x']:.1f}, {gw['y']:.1f})"
+            hovertext=f"<b>{gw['name']}</b><br>Status: {status_label}<br>Position: ({gw['x']:.1f}, {gw['y']:.1f})"
         ))
 
 
@@ -418,8 +468,17 @@ def render_chart_fragment():
             Gateway.is_active == True
         ).all()
         
+        gateway_ids = [gw.id for gw in gateways]
+        gateway_statuses = get_gateway_status(session, gateway_ids)
+        
         gateways_data = [
-            {'name': gw.name, 'x': gw.x_position, 'y': gw.y_position, 'id': gw.id}
+            {
+                'name': gw.name, 
+                'x': gw.x_position, 
+                'y': gw.y_position, 
+                'id': gw.id,
+                'status': gateway_statuses.get(gw.id, 'installed')
+            }
             for gw in gateways
         ]
         
