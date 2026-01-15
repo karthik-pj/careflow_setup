@@ -65,9 +65,20 @@ def extract_rooms_from_geojson(geojson_str):
     return rooms
 
 
-def create_floor_plan_figure(floor, gateways=None, rooms=None):
-    """Create a Plotly figure showing the floor plan with rooms and gateways"""
+def create_floor_plan_figure(floor, gateways=None, rooms=None, for_click=False):
+    """Create a Plotly figure showing the floor plan with rooms and gateways
+    
+    Args:
+        floor: The floor object with floor_plan_geojson
+        gateways: List of gateway objects to display
+        rooms: List of room dictionaries
+        for_click: If True, adds an invisible click layer for capturing clicks anywhere
+    """
     fig = go.Figure()
+    
+    # Track bounds for click layer
+    all_x = []
+    all_y = []
     
     if floor.floor_plan_geojson:
         try:
@@ -83,6 +94,8 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None):
                     if coords:
                         lons = [c[0] for c in coords]
                         lats = [c[1] for c in coords]
+                        all_x.extend(lons)
+                        all_y.extend(lats)
                         name = props.get('name', 'Unnamed')
                         
                         fig.add_trace(go.Scatter(
@@ -111,6 +124,8 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None):
                     if coords:
                         lons = [c[0] for c in coords]
                         lats = [c[1] for c in coords]
+                        all_x.extend(lons)
+                        all_y.extend(lats)
                         wall_type = props.get('subType', 'inner')
                         line_width = 2 if wall_type == 'outer' else 1
                         
@@ -124,6 +139,32 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None):
                         ))
         except Exception as e:
             st.warning(f"Error rendering floor plan: {e}")
+    
+    # Add invisible click layer if enabled (for click-to-place functionality)
+    if for_click and all_x and all_y:
+        import numpy as np
+        min_x, max_x = min(all_x), max(all_x)
+        min_y, max_y = min(all_y), max(all_y)
+        
+        # Create a grid of invisible points for click detection
+        grid_x = np.linspace(min_x, max_x, 20)
+        grid_y = np.linspace(min_y, max_y, 20)
+        click_x = []
+        click_y = []
+        for x in grid_x:
+            for y in grid_y:
+                click_x.append(x)
+                click_y.append(y)
+        
+        fig.add_trace(go.Scatter(
+            x=click_x,
+            y=click_y,
+            mode='markers',
+            marker=dict(size=20, color='rgba(0,0,0,0)', line=dict(width=0)),
+            hoverinfo='x+y',
+            showlegend=False,
+            name='click_layer'
+        ))
     
     if gateways:
         gw_lons = []
@@ -191,7 +232,9 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None):
         yaxis=yaxis_config,
         margin=dict(l=10, r=10, t=10, b=10),
         height=400,
-        plot_bgcolor='white'
+        plot_bgcolor='white',
+        hovermode='closest',
+        clickmode='event'
     )
     
     return fig
@@ -255,10 +298,11 @@ def render():
             st.markdown("#### Floor Plan - Click to Place Gateway")
             st.caption("👆 **Click on the floor plan** to select the exact gateway position, or use the options below.")
             
-            fig = create_floor_plan_figure(selected_floor, existing_gateways, rooms)
+            fig = create_floor_plan_figure(selected_floor, existing_gateways, rooms, for_click=True)
             
             # Use plotly_events to capture click position
-            click_data = plotly_events(fig, click_event=True, key="gateway_click_map")
+            # override_height is required for reliable click detection
+            click_data = plotly_events(fig, click_event=True, key="gateway_click_map", override_height=400)
             
             # Process click data
             if click_data and len(click_data) > 0:
