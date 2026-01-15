@@ -217,7 +217,7 @@ def render():
             st.warning("Please upload a floor plan for this building first.")
             return
         
-        floor_options = {f"{f.floor_number}: {f.name or 'Floor ' + str(f.floor_number)}": f.id for f in floors}
+        floor_options = {f"{f.name or 'Floor ' + str(f.floor_number)} (Level {f.floor_number})": f.id for f in floors}
         selected_floor_key = st.selectbox("Select Floor*", options=list(floor_options.keys()))
         selected_floor_id = floor_options[selected_floor_key]
         
