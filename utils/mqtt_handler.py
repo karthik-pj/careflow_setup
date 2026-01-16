@@ -67,15 +67,23 @@ class MQTTHandler:
         self.is_connected = False
         self.message_queue = queue.Queue(maxsize=10000)
         self.callbacks: list[Callable[[MQTTMessage], None]] = []
+        self.reconnect_callbacks: list[Callable[[], None]] = []
+        self.disconnect_callbacks: list[Callable[[], None]] = []
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self.last_error: Optional[str] = None
+        self._reconnect_count = 0
     
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         """Callback when connected to broker"""
         if reason_code == 0:
+            was_reconnect = self._reconnect_count > 0
+            self._reconnect_count += 1
             self.is_connected = True
             self.last_error = None
+            
+            connect_type = "Reconnected" if was_reconnect else "Connected"
+            
             if self.topic_prefix and self.topic_prefix.strip():
                 topic = self.topic_prefix.strip()
                 
@@ -96,11 +104,20 @@ class MQTTHandler:
                         topic = f"{topic}#"
                     try:
                         client.subscribe(topic)
-                        print(f"Connected to MQTT broker, subscribed to {topic}")
+                        print(f"{connect_type} to MQTT broker, subscribed to {topic}")
                     except ValueError as e:
                         print(f"Invalid subscription topic '{topic}': {e}")
             else:
-                print(f"Connected to MQTT broker (no subscription - publish only)")
+                print(f"{connect_type} to MQTT broker (no subscription - publish only)")
+            
+            # Trigger reconnection callbacks
+            if was_reconnect:
+                print(f"[MQTT] Triggering {len(self.reconnect_callbacks)} reconnect callbacks")
+                for callback in self.reconnect_callbacks:
+                    try:
+                        callback()
+                    except Exception as e:
+                        print(f"[MQTT] Reconnect callback error: {e}")
         else:
             self.is_connected = False
             self.last_error = f"Connection failed with code: {reason_code}"
@@ -111,7 +128,17 @@ class MQTTHandler:
         self.is_connected = False
         if reason_code != 0:
             self.last_error = f"Unexpected disconnection: {reason_code}"
-            print(f"Disconnected unexpectedly: {reason_code}")
+            print(f"[MQTT] Disconnected unexpectedly: {reason_code}")
+        else:
+            print("[MQTT] Disconnected gracefully")
+        
+        # Trigger disconnect callbacks
+        print(f"[MQTT] Triggering {len(self.disconnect_callbacks)} disconnect callbacks")
+        for callback in self.disconnect_callbacks:
+            try:
+                callback()
+            except Exception as e:
+                print(f"[MQTT] Disconnect callback error: {e}")
     
     def _on_message(self, client, userdata, msg):
         """Callback when message received"""
@@ -314,6 +341,14 @@ class MQTTHandler:
         """Remove a callback function"""
         if callback in self.callbacks:
             self.callbacks.remove(callback)
+    
+    def add_reconnect_callback(self, callback: Callable[[], None]):
+        """Add a callback to be called when MQTT reconnects after disconnection"""
+        self.reconnect_callbacks.append(callback)
+    
+    def add_disconnect_callback(self, callback: Callable[[], None]):
+        """Add a callback to be called when MQTT disconnects"""
+        self.disconnect_callbacks.append(callback)
     
     def connect(self, timeout: int = 10) -> bool:
         """Connect to the MQTT broker with timeout"""

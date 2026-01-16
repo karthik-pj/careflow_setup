@@ -150,18 +150,33 @@ class SignalProcessor:
     
     def check_and_restart(self) -> bool:
         """Check if the processor should be running but isn't, and restart if needed.
+        Also starts the processor if it has never been started.
         Returns True if processor is now running, False if restart failed.
         """
+        # If already running properly, nothing to do
+        if self.is_running:
+            return True
+        
         needs_restart = False
+        needs_start = False
         
         if self._running:
+            # Was running but something is wrong
             if self._mqtt_handler and not self._mqtt_handler.is_connected:
                 needs_restart = True
             if not self._scheduler_thread or not self._scheduler_thread.is_alive():
                 needs_restart = True
+        else:
+            # Never started - start it now
+            needs_start = True
         
         if needs_restart:
+            print("[SignalProcessor] Restarting due to connection or thread issues")
             self.stop()
+            return self.start()
+        
+        if needs_start:
+            print("[SignalProcessor] Starting for the first time")
             return self.start()
         
         return self.is_running
@@ -189,6 +204,11 @@ class SignalProcessor:
         if self.is_running:
             return True
         
+        # Always stop existing handler to ensure clean state
+        if self._mqtt_handler or self._scheduler_thread:
+            print("[SignalProcessor] Cleaning up stale resources before start")
+            self.stop()
+        
         try:
             with get_db_session() as session:
                 mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
@@ -212,6 +232,8 @@ class SignalProcessor:
                 )
             
             self._mqtt_handler.add_callback(self._on_mqtt_message)
+            self._mqtt_handler.add_reconnect_callback(self._on_mqtt_reconnect)
+            self._mqtt_handler.add_disconnect_callback(self._on_mqtt_disconnect)
             
             if not self._mqtt_handler.connect():
                 self._last_error = self._mqtt_handler.last_error or "Failed to connect to MQTT broker"
@@ -276,6 +298,17 @@ class SignalProcessor:
             except Exception as e:
                 self._stats['errors'] += 1
                 self._last_error = str(e)
+    
+    def _on_mqtt_reconnect(self):
+        """Callback when MQTT reconnects - ensures processing resumes immediately"""
+        print("[SignalProcessor] MQTT reconnected - resuming signal processing")
+        self._last_heartbeat = datetime.utcnow()
+        self._last_error = None
+    
+    def _on_mqtt_disconnect(self):
+        """Callback when MQTT disconnects - log the event"""
+        print("[SignalProcessor] MQTT disconnected - signals will not be stored until reconnection")
+        self._last_error = "MQTT disconnected - awaiting reconnection"
     
     def _scheduler_loop(self):
         """Scheduler loop for position calculation - runs in dedicated thread.
