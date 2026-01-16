@@ -488,8 +488,17 @@ class SignalProcessor:
                         floor_confidence *= 0.6  # Reduce confidence when using mixed floors
                     
                     if len(readings) >= 1:
+                        # Debug: Log which gateways are being used for triangulation
+                        if beacon:
+                            gw_info = [(r.gateway_id, r.rssi, round(r.x, 1), round(r.y, 1)) for r in readings]
+                            print(f"[TRIANGULATION DEBUG] {beacon.name}: {len(readings)} gateways: {gw_info}")
+                        
                         readings = filter_outlier_readings(readings)
                         x, y, accuracy = trilaterate_2d(readings, beacon_id=beacon_id)
+                        
+                        # Debug: Log calculated position
+                        if beacon:
+                            print(f"[TRIANGULATION DEBUG] {beacon.name}: Position=({x:.1f}, {y:.1f}), Accuracy={accuracy:.1f}m")
                         
                         if self._position_smoothing_alpha < 1.0 and beacon_id in self._position_history:
                             prev_positions = self._position_history[beacon_id]
