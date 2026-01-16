@@ -64,7 +64,9 @@ class Floor(Base):
     positions = relationship("Position", back_populates="floor", cascade="all, delete-orphan")
     zones = relationship("Zone", back_populates="floor", cascade="all, delete-orphan")
     calibration_points = relationship("CalibrationPoint", back_populates="floor", cascade="all, delete-orphan")
+    focus_areas = relationship("FocusArea", back_populates="floor", cascade="all, delete-orphan")
     coverage_zones = relationship("CoverageZone", back_populates="floor", cascade="all, delete-orphan")
+    alert_zones = relationship("AlertZone", back_populates="floor", cascade="all, delete-orphan")
     gateway_plans = relationship("GatewayPlan", back_populates="floor", cascade="all, delete-orphan")
 
 
@@ -246,25 +248,71 @@ class CalibrationPoint(Base):
     floor = relationship("Floor", back_populates="calibration_points")
 
 
-class CoverageZone(Base):
-    """Coverage zone for gateway planning and geofencing - defines polygonal areas"""
-    __tablename__ = 'coverage_zones'
+class FocusArea(Base):
+    """Focus area defining regions of interest on a floor plan - stored as GeoJSON"""
+    __tablename__ = 'focus_areas'
     
     id = Column(Integer, primary_key=True)
     floor_id = Column(Integer, ForeignKey('floors.id'), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    polygon_coords = Column(Text, nullable=False)
+    geojson = Column(Text, nullable=False)
+    area_type = Column(String(50), default='general')
+    priority = Column(Integer, default=1)
+    color = Column(String(20), default='#2e5cbf')
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    floor = relationship("Floor", back_populates="focus_areas")
+    coverage_zones = relationship("CoverageZone", back_populates="focus_area")
+    alert_zones = relationship("AlertZone", back_populates="focus_area")
+
+
+class CoverageZone(Base):
+    """Coverage zone for gateway planning - linked to focus areas"""
+    __tablename__ = 'coverage_zones'
+    
+    id = Column(Integer, primary_key=True)
+    floor_id = Column(Integer, ForeignKey('floors.id'), nullable=False)
+    focus_area_id = Column(Integer, ForeignKey('focus_areas.id'))
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    polygon_coords = Column(Text)
+    geojson = Column(Text)
     target_accuracy = Column(Float, default=1.0)
     priority = Column(Integer, default=1)
     color = Column(String(20), default='#2e5cbf')
     is_active = Column(Boolean, default=True)
-    alert_on_enter = Column(Boolean, default=True)
-    alert_on_exit = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     floor = relationship("Floor", back_populates="coverage_zones")
+    focus_area = relationship("FocusArea", back_populates="coverage_zones")
+
+
+class AlertZone(Base):
+    """Alert zone for geofencing - stored as GeoJSON polygon with snap-to-room support"""
+    __tablename__ = 'alert_zones'
+    
+    id = Column(Integer, primary_key=True)
+    floor_id = Column(Integer, ForeignKey('floors.id'), nullable=False)
+    focus_area_id = Column(Integer, ForeignKey('focus_areas.id'))
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    geojson = Column(Text, nullable=False)
+    zone_type = Column(String(50), default='polygon')
+    color = Column(String(20), default='#FF5722')
+    alert_on_enter = Column(Boolean, default=True)
+    alert_on_exit = Column(Boolean, default=True)
+    dwell_time_alert = Column(Boolean, default=False)
+    dwell_time_threshold_seconds = Column(Integer, default=300)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    floor = relationship("Floor", back_populates="alert_zones")
+    focus_area = relationship("FocusArea", back_populates="alert_zones")
 
 
 class GatewayPlan(Base):

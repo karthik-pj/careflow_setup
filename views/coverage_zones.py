@@ -6,8 +6,13 @@ from io import BytesIO
 import base64
 import numpy as np
 from datetime import datetime, timedelta
-from database import get_db_session, Floor, Building, CoverageZone, Zone, ZoneAlert, Beacon, Position, Gateway
+from database import get_db_session, Floor, Building, CoverageZone, FocusArea, Zone, ZoneAlert, Beacon, Position, Gateway
 from utils.mqtt_publisher import get_mqtt_publisher
+from utils.geojson_renderer import (
+    create_floor_plan_figure, render_zone_polygon, extract_rooms_from_geojson,
+    find_nearest_room_corner, polygon_to_geojson, geojson_to_polygon_coords,
+    latlon_to_meters as shared_latlon_to_meters
+)
 
 
 def latlon_to_meters(lat, lon, origin_lat, origin_lon):
