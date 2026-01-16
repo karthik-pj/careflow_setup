@@ -28,7 +28,7 @@ The application uses a Streamlit-based interface.
 ### Technical Implementations
 *   **Core Application:** Built with Streamlit (`app.py`).
 *   **Database:** SQLAlchemy ORM with context managers for session management.
-    *   **Schema:** Includes tables for Buildings, Floors, Gateways, Beacons, RSSISignals, Positions, MQTTConfig, Zones, ZoneAlerts, and CalibrationPoints.
+    *   **Schema:** Includes tables for Buildings, Floors, Gateways, Beacons, RSSISignals, Positions, MQTTConfig, Zones, ZoneAlerts, CalibrationPoints, FocusAreas, AlertZones, and CoverageZones.
 *   **Background Processing:** A dedicated scheduler thread handles continuous position calculation, using Paho MQTT's internal thread for signal storage via callback. This uses a singleton pattern with `@st.cache_resource` and includes heartbeat monitoring.
 *   **Triangulation Engine:**
     *   Utilizes Log-distance path loss model for RSSI to distance conversion.
@@ -51,12 +51,15 @@ The application uses a Streamlit-based interface.
 *   **Live Tracking:** Visualize beacon positions and movement vectors on floor plans.
 *   **Signal Monitor:** Tool for debugging and monitoring incoming signals.
 *   **Historical Playback:** Replay beacon movement patterns.
+*   **Focus Areas:** Define areas of interest on floor plans for coverage planning and alert zones. Supports polygon draw, room selection, and rectangle bounds with snap-to-room-corner functionality.
+*   **Alert Zones:** Define geofencing zones with entry/exit/dwell time alerts. Can be created from focus areas or drawn directly on floor plans.
 *   **Zones & Alerts:** Define geofencing zones with configurable alerts and acknowledgment.
 *   **Analytics Dashboard:** Heatmaps, dwell time analysis, and traffic patterns.
 *   **Import/Export:** Bulk import/export of configurations (JSON/CSV).
 *   **Calibration Wizard:** Improve triangulation accuracy using known beacon positions.
 *   **Gateway Planning:** Plan optimal gateway placement based on target accuracy, with auto-suggestion, coverage visualization, and export of installation guides.
-*   **Coverage Zones:** Define polygonal areas on floor plans with specific target accuracy and priority levels.
+*   **Coverage Zones:** Define polygonal areas on floor plans with specific target accuracy and priority levels. Can now be created from Focus Areas for consistent geometry reuse.
+*   **Shared GeoJSON Renderer:** Consolidated utility (`utils/geojson_renderer.py`) for rendering floor plans, zones, gateways, and beacons across all views.
 
 ### System Design Choices
 *   **Modularity:** The project is structured into `database`, `views`, and `utils` folders for clear separation of concerns.
