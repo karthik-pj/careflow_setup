@@ -51,8 +51,15 @@ def get_gateway_status(session, gateway_ids, timeout_minutes=2):
         mqtt_last_seen = mqtt_activity.get(gw_mac)
         signal_last_seen = signal_times.get(gw_id)
         
+        # Make cutoff timezone-aware if signal time is timezone-aware
+        if signal_last_seen and signal_last_seen.tzinfo is not None:
+            from datetime import timezone
+            cutoff_aware = cutoff_time.replace(tzinfo=timezone.utc)
+        else:
+            cutoff_aware = cutoff_time
+        
         # Check if gateway is detecting registered beacons
-        if signal_last_seen and signal_last_seen >= cutoff_time:
+        if signal_last_seen and signal_last_seen >= cutoff_aware:
             status[gw_id] = 'active'  # Green - detecting registered beacons
         # Check if gateway has MQTT activity (connected but no registered beacons nearby)
         elif mqtt_last_seen and mqtt_last_seen >= cutoff_time:
