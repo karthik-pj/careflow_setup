@@ -21,6 +21,23 @@ class MQTTMessage:
     raw_data: str
 
 
+# Global tracker for gateway MQTT activity (updated whenever gateway sends any message)
+_gateway_mqtt_activity: Dict[str, datetime] = {}
+_gateway_activity_lock = threading.Lock()
+
+
+def update_gateway_mqtt_activity(gateway_mac: str):
+    """Update the last MQTT activity time for a gateway"""
+    with _gateway_activity_lock:
+        _gateway_mqtt_activity[gateway_mac.upper()] = datetime.utcnow()
+
+
+def get_gateway_mqtt_activity() -> Dict[str, datetime]:
+    """Get a copy of the gateway MQTT activity times"""
+    with _gateway_activity_lock:
+        return _gateway_mqtt_activity.copy()
+
+
 class MQTTHandler:
     """MQTT client handler for receiving BLE gateway data"""
     
@@ -239,6 +256,10 @@ class MQTTHandler:
                 
                 if not beacons:
                     return None
+                
+                # Track gateway MQTT activity
+                if gateway_mac:
+                    update_gateway_mqtt_activity(gateway_mac)
                 
                 # Debug: Log all beacon MACs in this message
                 beacon_macs = [b.get('mac', 'unknown') for b in beacons if isinstance(b, dict)]

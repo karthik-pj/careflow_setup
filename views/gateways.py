@@ -7,23 +7,26 @@ import json
 import math
 import plotly.graph_objects as go
 from streamlit_plotly_events import plotly_events
+from utils.mqtt_handler import get_gateway_mqtt_activity
 
 
 def get_gateway_status(session, gateway_ids, timeout_minutes=2):
     """
-    Get status for each gateway based on RSSI signal activity.
-    Returns dict: {gateway_id: {'status': 'active'|'offline'|'installed', 'last_seen': datetime|None}}
+    Get status for each gateway based on RSSI signal activity and MQTT connection.
+    Returns dict: {gateway_id: status}
     
     Status meanings:
-    - 'active': Detected registered beacons within timeout period
-    - 'offline': Previously detected beacons but not within timeout
-    - 'installed': Never detected any registered beacons (may still be receiving other signals)
+    - 'active': Detected registered beacons within timeout period (Green)
+    - 'connected': Connected to MQTT but not detecting registered beacons (Blue)  
+    - 'offline': No MQTT activity within timeout (Red)
+    - 'installed': Never detected any signals (Blue - just installed)
     """
     if not gateway_ids:
         return {}
     
     cutoff_time = datetime.utcnow() - timedelta(minutes=timeout_minutes)
     
+    # Get last signal time from registered beacons
     latest_signals = session.query(
         RSSISignal.gateway_id,
         func.max(RSSISignal.timestamp).label('last_seen')
@@ -33,14 +36,32 @@ def get_gateway_status(session, gateway_ids, timeout_minutes=2):
     
     signal_times = {sig.gateway_id: sig.last_seen for sig in latest_signals}
     
+    # Get MQTT activity times (from any beacon, not just registered)
+    mqtt_activity = get_gateway_mqtt_activity()
+    
+    # Get gateway MAC addresses for MQTT activity lookup
+    gateways = session.query(Gateway.id, Gateway.mac_address).filter(
+        Gateway.id.in_(gateway_ids)
+    ).all()
+    gateway_macs = {gw.id: gw.mac_address.upper() for gw in gateways}
+    
     status = {}
     for gw_id in gateway_ids:
-        if gw_id not in signal_times:
-            status[gw_id] = 'installed'
-        elif signal_times[gw_id] >= cutoff_time:
-            status[gw_id] = 'active'
+        gw_mac = gateway_macs.get(gw_id, '')
+        mqtt_last_seen = mqtt_activity.get(gw_mac)
+        signal_last_seen = signal_times.get(gw_id)
+        
+        # Check if gateway is detecting registered beacons
+        if signal_last_seen and signal_last_seen >= cutoff_time:
+            status[gw_id] = 'active'  # Green - detecting registered beacons
+        # Check if gateway has MQTT activity (connected but no registered beacons nearby)
+        elif mqtt_last_seen and mqtt_last_seen >= cutoff_time:
+            status[gw_id] = 'connected'  # Blue - connected via MQTT
+        # Check if gateway was previously active
+        elif signal_last_seen or mqtt_last_seen:
+            status[gw_id] = 'offline'  # Red - was active but now silent
         else:
-            status[gw_id] = 'offline'
+            status[gw_id] = 'installed'  # Blue - just installed, never seen
     
     return status
 
@@ -226,12 +247,14 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None, for_click=False, 
     
     if gateways:
         status_colors = {
-            'installed': '#2e5cbf',
-            'active': '#27ae60',
-            'offline': '#e74c3c'
+            'installed': '#2e5cbf',  # Blue - just installed
+            'connected': '#2e5cbf',  # Blue - connected via MQTT but no registered beacons nearby
+            'active': '#27ae60',     # Green - detecting registered beacons
+            'offline': '#e74c3c'     # Red - no MQTT activity
         }
         status_labels = {
             'installed': 'Installed',
+            'connected': 'Connected',  # Connected to MQTT
             'active': 'Active', 
             'offline': 'Offline'
         }
