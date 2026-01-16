@@ -47,6 +47,9 @@ class MQTTHandler:
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
         
+        # Enable automatic reconnection with shorter delays
+        self.client.reconnect_delay_set(min_delay=1, max_delay=30)
+        
         if username and password:
             self.client.username_pw_set(username, password)
         
@@ -353,7 +356,7 @@ class MQTTHandler:
     def connect(self, timeout: int = 10) -> bool:
         """Connect to the MQTT broker with timeout"""
         try:
-            self.client.connect(self.broker_host, self.broker_port, keepalive=60)
+            self.client.connect(self.broker_host, self.broker_port, keepalive=120)
             self.client.loop_start()
             
             import time
