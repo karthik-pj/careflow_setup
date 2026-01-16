@@ -67,17 +67,23 @@ def rssi_to_distance(rssi: int, tx_power: int = -59, path_loss_exponent: float =
     return max(0.3, min(distance, 50))
 
 
-def filter_rssi_readings(readings: List[GatewayReading]) -> List[GatewayReading]:
+def filter_rssi_readings(readings: List[GatewayReading], min_rssi: int = -85) -> List[GatewayReading]:
     """
     Filter and aggregate multiple RSSI readings per gateway using robust statistics.
     
     Uses median filtering to remove outliers, which is more robust than mean
     for noisy BLE signals.
+    
+    Args:
+        readings: List of gateway readings
+        min_rssi: Minimum RSSI threshold (default -85 dBm). Weaker signals are filtered out.
     """
     gateway_readings: Dict[int, List[GatewayReading]] = defaultdict(list)
     
     for reading in readings:
-        gateway_readings[reading.gateway_id].append(reading)
+        # Filter out very weak signals that are unreliable for positioning
+        if reading.rssi >= min_rssi:
+            gateway_readings[reading.gateway_id].append(reading)
     
     filtered = []
     for gateway_id, gw_readings in gateway_readings.items():
@@ -118,21 +124,29 @@ def calculate_weights(readings: List[GatewayReading]) -> np.ndarray:
     
     Stronger signals (higher RSSI, closer distance) get higher weights
     because they're more reliable for positioning.
+    
+    Uses exponential weighting based on RSSI for better differentiation
+    between strong and weak signals.
     """
     if not readings:
         return np.array([])
     
     rssi_values = np.array([r.rssi for r in readings])
     
-    rssi_normalized = (rssi_values - rssi_values.min()) / max(rssi_values.max() - rssi_values.min(), 1)
-    rssi_weights = rssi_normalized + 0.5
+    # Use exponential weighting based on RSSI - stronger signals get exponentially more weight
+    # RSSI typically ranges from -30 (excellent) to -100 (very weak)
+    # Convert to positive scale and apply exponential
+    rssi_positive = rssi_values + 100  # Now ranges from 0 to ~70
+    rssi_weights = np.exp(rssi_positive / 20)  # Exponential weighting
     
+    # Distance-based weights (inverse square for better accuracy)
     distances = np.array([
         rssi_to_distance(r.rssi, r.tx_power, r.path_loss_exponent) 
         for r in readings
     ])
-    distance_weights = 1 / np.maximum(distances, 0.5)
+    distance_weights = 1 / np.maximum(distances ** 1.5, 0.5)  # Use power of 1.5 for balance
     
+    # Combine weights
     weights = rssi_weights * distance_weights
     weights = weights / np.sum(weights)
     
