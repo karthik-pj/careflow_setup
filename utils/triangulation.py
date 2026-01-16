@@ -67,7 +67,7 @@ def rssi_to_distance(rssi: int, tx_power: int = -59, path_loss_exponent: float =
     return max(0.3, min(distance, 50))
 
 
-def filter_rssi_readings(readings: List[GatewayReading], min_rssi: int = -85) -> List[GatewayReading]:
+def filter_rssi_readings(readings: List[GatewayReading], min_rssi: int = -95) -> List[GatewayReading]:
     """
     Filter and aggregate multiple RSSI readings per gateway using robust statistics.
     
@@ -76,7 +76,8 @@ def filter_rssi_readings(readings: List[GatewayReading], min_rssi: int = -85) ->
     
     Args:
         readings: List of gateway readings
-        min_rssi: Minimum RSSI threshold (default -85 dBm). Weaker signals are filtered out.
+        min_rssi: Minimum RSSI threshold (default -95 dBm). Weaker signals are filtered out.
+                  Set to -95 to include weak but usable signals for triangulation.
     """
     gateway_readings: Dict[int, List[GatewayReading]] = defaultdict(list)
     
