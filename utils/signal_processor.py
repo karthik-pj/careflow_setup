@@ -120,7 +120,7 @@ class SignalProcessor:
         }
         self._publisher = None
         self._refresh_interval = 1.0
-        self._signal_window_seconds = 3.0
+        self._signal_window_seconds = 30.0  # Increased to capture signals from multiple gateways
         self._rssi_smoothing_enabled = True
         self._position_smoothing_alpha = 0.4
         self._position_history: Dict[int, List[Tuple[float, float]]] = {}
@@ -246,7 +246,7 @@ class SignalProcessor:
                     if getattr(mqtt_config, 'publish_enabled', False):
                         self._publisher.configure(mqtt_config)
                     self._refresh_interval = getattr(mqtt_config, 'refresh_interval', 1.0) or 1.0
-                    self._signal_window_seconds = getattr(mqtt_config, 'signal_window_seconds', 3.0) or 3.0
+                    self._signal_window_seconds = getattr(mqtt_config, 'signal_window_seconds', 30.0) or 30.0
                     self._rssi_smoothing_enabled = getattr(mqtt_config, 'rssi_smoothing_enabled', True)
                     self._position_smoothing_alpha = getattr(mqtt_config, 'position_smoothing_alpha', 0.4) or 0.4
             
