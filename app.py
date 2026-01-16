@@ -356,7 +356,6 @@ page = st.sidebar.radio(
         "Live Tracking",
         "History Playback",
         "Import/Export",
-        "Calibration",
         "Signal Monitor"
     ],
     index=0,
@@ -414,9 +413,6 @@ elif page == "History Playback":
 elif page == "Import/Export":
     from views import import_export
     import_export.render()
-elif page == "Calibration":
-    from views import calibration
-    calibration.render()
 elif page == "Signal Monitor":
     from views import signal_monitor
     signal_monitor.render()
