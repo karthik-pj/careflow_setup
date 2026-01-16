@@ -120,7 +120,7 @@ class SignalProcessor:
         }
         self._publisher = None
         self._refresh_interval = 1.0
-        self._signal_window_seconds = 30.0  # Increased to capture signals from multiple gateways
+        self._signal_window_seconds = 5.0  # Reduced for faster response to beacon movement
         self._rssi_smoothing_enabled = True
         self._position_smoothing_alpha = 0.4
         self._position_history: Dict[int, List[Tuple[float, float]]] = {}

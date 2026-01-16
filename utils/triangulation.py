@@ -447,17 +447,20 @@ def calculate_velocity(
 def smooth_position(
     current_pos: Tuple[float, float],
     previous_positions: List[Tuple[float, float]],
-    alpha: float = 0.7
+    alpha: float = 0.7,
+    jump_threshold: float = 3.0
 ) -> Tuple[float, float]:
     """
     Apply simple exponential smoothing to reduce position jitter.
     
     Uses single-step smoothing for more responsive movement detection.
+    Bypasses smoothing for large movements to avoid lag when beacons are relocated.
     
     Args:
         current_pos: Current calculated position
         previous_positions: List of previous positions (most recent last)
         alpha: Smoothing factor (0-1), higher = more responsive
+        jump_threshold: Distance in meters above which smoothing is bypassed
     
     Returns:
         Smoothed (x, y) position
@@ -466,6 +469,14 @@ def smooth_position(
         return current_pos
     
     last_pos = previous_positions[-1]
+    
+    # Calculate distance from last position
+    distance = np.sqrt((current_pos[0] - last_pos[0])**2 + (current_pos[1] - last_pos[1])**2)
+    
+    # Bypass smoothing for large movements (beacon was physically relocated)
+    if distance > jump_threshold:
+        return current_pos
+    
     smoothed_x = alpha * current_pos[0] + (1 - alpha) * last_pos[0]
     smoothed_y = alpha * current_pos[1] + (1 - alpha) * last_pos[1]
     
