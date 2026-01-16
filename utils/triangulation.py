@@ -13,7 +13,7 @@ class GatewayReading:
     y: float
     rssi: int
     tx_power: int = -59
-    path_loss_exponent: float = 2.5
+    path_loss_exponent: float = 3.0  # Default for indoor with obstacles
 
 
 @dataclass
@@ -38,13 +38,13 @@ def get_kalman_state(beacon_id: int) -> KalmanState:
     return _kalman_states[beacon_id]
 
 
-def rssi_to_distance(rssi: int, tx_power: int = -59, path_loss_exponent: float = 2.5) -> float:
+def rssi_to_distance(rssi: int, tx_power: int = -59, path_loss_exponent: float = 3.0) -> float:
     """
     Convert RSSI value to estimated distance using the log-distance path loss model.
     
     Uses improved defaults for indoor environments:
     - tx_power: -59 dBm (typical BLE at 1 meter)
-    - path_loss_exponent: 2.5 (indoor with some obstacles)
+    - path_loss_exponent: 3.0 (indoor with obstacles - calibrated default)
     
     Args:
         rssi: Received signal strength indicator (dBm)
