@@ -12,7 +12,12 @@ from streamlit_plotly_events import plotly_events
 def get_gateway_status(session, gateway_ids, timeout_minutes=2):
     """
     Get status for each gateway based on RSSI signal activity.
-    Returns dict: {gateway_id: 'active'|'offline'|'installed'}
+    Returns dict: {gateway_id: {'status': 'active'|'offline'|'installed', 'last_seen': datetime|None}}
+    
+    Status meanings:
+    - 'active': Detected registered beacons within timeout period
+    - 'offline': Previously detected beacons but not within timeout
+    - 'installed': Never detected any registered beacons (may still be receiving other signals)
     """
     if not gateway_ids:
         return {}
@@ -38,6 +43,24 @@ def get_gateway_status(session, gateway_ids, timeout_minutes=2):
             status[gw_id] = 'offline'
     
     return status
+
+
+def get_gateway_last_seen(session, gateway_ids):
+    """
+    Get the last seen timestamp for each gateway.
+    Returns dict: {gateway_id: datetime|None}
+    """
+    if not gateway_ids:
+        return {}
+    
+    latest_signals = session.query(
+        RSSISignal.gateway_id,
+        func.max(RSSISignal.timestamp).label('last_seen')
+    ).filter(
+        RSSISignal.gateway_id.in_(gateway_ids)
+    ).group_by(RSSISignal.gateway_id).all()
+    
+    return {sig.gateway_id: sig.last_seen for sig in latest_signals}
 
 
 def meters_to_latlon(x, y, origin_lat, origin_lon):
