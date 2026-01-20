@@ -63,6 +63,10 @@ class MQTTHandler:
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
+        self.client.on_subscribe = self._on_subscribe
+        
+        # Track pending subscriptions for verification
+        self._pending_subscriptions: Dict[int, str] = {}
         
         # Enable automatic reconnection with shorter delays
         self.client.reconnect_delay_set(min_delay=1, max_delay=30)
@@ -111,8 +115,9 @@ class MQTTHandler:
                     topics = [t.strip() for t in topic.split(',') if t.strip()]
                     for t in topics:
                         try:
-                            client.subscribe(t)
-                            print(f"Subscribed to topic: {t}")
+                            result, mid = client.subscribe(t)
+                            self._pending_subscriptions[mid] = t
+                            print(f"Subscribing to topic: {t} (mid={mid})")
                         except ValueError as e:
                             print(f"Invalid subscription topic '{t}': {e}")
                 else:
@@ -142,6 +147,28 @@ class MQTTHandler:
             self.is_connected = False
             self.last_error = f"Connection failed with code: {reason_code}"
             print(f"Failed to connect: {reason_code}")
+    
+    def _on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
+        """Callback when subscription is acknowledged by broker"""
+        topic = self._pending_subscriptions.pop(mid, f"unknown (mid={mid})")
+        
+        # Handle both single reason code and list
+        if hasattr(reason_codes, '__iter__') and not isinstance(reason_codes, (str, bytes)):
+            codes = list(reason_codes)
+        else:
+            codes = [reason_codes]
+        
+        for rc in codes:
+            # QoS 0, 1, 2 = success, 128+ = failure
+            if hasattr(rc, 'value'):
+                rc_value = rc.value
+            else:
+                rc_value = int(rc) if rc is not None else 0
+                
+            if rc_value >= 128:
+                print(f"[MQTT SUBSCRIBE FAILED] Topic: {topic}, Reason code: {rc_value}")
+            else:
+                print(f"[MQTT SUBSCRIBE OK] Topic: {topic}, Granted QoS: {rc_value}")
     
     def _on_disconnect(self, client, userdata, flags, reason_code, properties=None):
         """Callback when disconnected from broker"""
