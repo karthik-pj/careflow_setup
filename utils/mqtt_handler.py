@@ -163,6 +163,9 @@ class MQTTHandler:
     def _on_message(self, client, userdata, msg):
         """Callback when message received"""
         try:
+            # Debug: Log ALL incoming MQTT messages with their topics
+            print(f"[MQTT RAW] Topic: {msg.topic}, Payload size: {len(msg.payload)} bytes")
+            
             parsed_message = self._parse_message(msg.topic, msg.payload)
             if parsed_message:
                 try:
