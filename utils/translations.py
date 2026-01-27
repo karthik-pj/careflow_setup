@@ -96,6 +96,8 @@ TRANSLATIONS = {
         "disconnect": "Disconnect",
         "connected": "Connected",
         "disconnected": "Disconnected",
+        "offline": "Offline",
+        "installed": "Installed",
         "test_connection": "Test Connection",
         "save_config": "Save Configuration",
         
@@ -259,6 +261,8 @@ TRANSLATIONS = {
         "disconnect": "Trennen",
         "connected": "Verbunden",
         "disconnected": "Getrennt",
+        "offline": "Offline",
+        "installed": "Installiert",
         "test_connection": "Verbindung testen",
         "save_config": "Konfiguration speichern",
         
@@ -422,6 +426,8 @@ TRANSLATIONS = {
         "disconnect": "Déconnecter",
         "connected": "Connecté",
         "disconnected": "Déconnecté",
+        "offline": "Hors ligne",
+        "installed": "Installé",
         "test_connection": "Tester la connexion",
         "save_config": "Enregistrer la configuration",
         
@@ -585,6 +591,8 @@ TRANSLATIONS = {
         "disconnect": "Rozłącz",
         "connected": "Połączony",
         "disconnected": "Rozłączony",
+        "offline": "Offline",
+        "installed": "Zainstalowano",
         "test_connection": "Testuj połączenie",
         "save_config": "Zapisz konfigurację",
         

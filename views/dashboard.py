@@ -2,6 +2,7 @@ import streamlit as st
 from database import get_db_session, Building, Floor, Gateway, Beacon, Position, RSSISignal, MQTTConfig
 from utils.signal_processor import get_signal_processor
 from utils.translations import t
+from utils.mqtt_handler import get_gateway_mqtt_activity
 from sqlalchemy import func
 from datetime import datetime, timedelta
 
@@ -83,15 +84,33 @@ def render():
                 gateways = session.query(Gateway).filter(Gateway.is_active == True).all()
                 
                 if gateways:
+                    mqtt_activity = get_gateway_mqtt_activity()
+                    two_min_ago = datetime.utcnow() - timedelta(minutes=2)
+                    five_min_ago = datetime.utcnow() - timedelta(minutes=5)
+                    
                     for gw in gateways:
-                        five_min_ago = datetime.utcnow() - timedelta(minutes=5)
+                        gw_mac = gw.mac_address.upper() if gw.mac_address else ''
+                        mqtt_last_seen = mqtt_activity.get(gw_mac)
+                        
                         recent = session.query(func.count(RSSISignal.id)).filter(
                             RSSISignal.gateway_id == gw.id,
                             RSSISignal.timestamp >= five_min_ago
                         ).scalar()
                         
-                        status = "🟢" if recent > 0 else "🔴"
-                        st.write(f"{status} **{gw.name}** — {recent} {t('signals')} (5 min)")
+                        if recent > 0:
+                            status = "🟢"
+                            status_text = f"{recent} {t('signals')} (5 min)"
+                        elif mqtt_last_seen and mqtt_last_seen >= two_min_ago:
+                            status = "🔵"
+                            status_text = t("connected")
+                        elif mqtt_last_seen:
+                            status = "🔴"
+                            status_text = t("offline")
+                        else:
+                            status = "⚪"
+                            status_text = t("installed")
+                        
+                        st.write(f"{status} **{gw.name}** — {status_text}")
                 else:
                     st.info(t("no_gateways"))
         
