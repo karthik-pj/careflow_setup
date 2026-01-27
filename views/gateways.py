@@ -175,7 +175,11 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None, for_click=False, 
                 geom = feature.get('geometry', {})
                 geom_type = props.get('geomType', '')
                 
-                if geom_type == 'room' and geom.get('type') == 'Polygon':
+                # Handle rooms - either explicit geomType='room' or Polygon with name
+                is_room = (geom_type == 'room' and geom.get('type') == 'Polygon') or \
+                          (geom.get('type') == 'Polygon' and 'name' in props)
+                
+                if is_room:
                     coords = geom.get('coordinates', [[]])[0]
                     if coords:
                         lons = [c[0] for c in coords]
@@ -547,7 +551,6 @@ def render():
                     longitude = room_data['center_lon']
                     
                     if selected_floor.origin_lat and selected_floor.origin_lon:
-                        import math
                         lat_diff = latitude - selected_floor.origin_lat
                         lon_diff = longitude - selected_floor.origin_lon
                         y_position = lat_diff * 111000
