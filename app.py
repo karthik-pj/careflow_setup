@@ -15,15 +15,15 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
     :root {
-        --cf-primary: #2563eb;
+        --cf-primary: #2e5cbf;
         --cf-primary-dark: #1d4ed8;
         --cf-primary-light: #3b82f6;
-        --cf-accent: #0ea5e9;
-        --cf-text: #1e293b;
-        --cf-text-light: #64748b;
-        --cf-bg: #ffffff;
-        --cf-bg-subtle: #f8fafc;
-        --cf-border: #e2e8f0;
+        --cf-accent: #008ed3;
+        --cf-text: #fafafa;
+        --cf-text-light: #a0aec0;
+        --cf-bg: #0e1117;
+        --cf-bg-subtle: #1a1f2e;
+        --cf-border: #2d3748;
         --cf-success: #10b981;
         --cf-warning: #f59e0b;
         --cf-error: #ef4444;
@@ -35,8 +35,12 @@ st.markdown("""
     
     /* Sidebar styling */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        background: linear-gradient(180deg, #1a1f2e 0%, #0e1117 100%);
         border-right: 1px solid var(--cf-border);
+    }
+    
+    section[data-testid="stSidebar"] * {
+        color: var(--cf-text) !important;
     }
     
     section[data-testid="stSidebar"] .stRadio > label {
