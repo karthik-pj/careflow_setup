@@ -70,15 +70,17 @@ else:
     }
     """
 
-st.markdown(f"""
+# Inject theme CSS first
+st.markdown(f"<style>{theme_css}</style>", unsafe_allow_html=True)
+
+# Common CSS (theme-independent)
+st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
-    {theme_css}
-    
-    .stApp {{
+    .stApp {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }}
+    }
     
     section[data-testid="stSidebar"] .stRadio > label {
         font-family: 'Inter', sans-serif;
