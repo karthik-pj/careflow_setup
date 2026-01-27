@@ -348,7 +348,6 @@ page = st.sidebar.radio(
     [
         "Dashboard",
         "Buildings & Floor Plans",
-        "Focus Areas",
         "Coverage Zones",
         "Alert Zones",
         "Gateway Planning",
@@ -391,9 +390,6 @@ if page == "Dashboard":
 elif page == "Buildings & Floor Plans":
     from views import buildings
     buildings.render()
-elif page == "Focus Areas":
-    from views import focus_areas
-    focus_areas.render()
 elif page == "Coverage Zones":
     from views import coverage_zones
     coverage_zones.show()

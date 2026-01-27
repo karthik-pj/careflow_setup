@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from database import get_db_session, Building, Floor, FocusArea, AlertZone
+from database import get_db_session, Building, Floor, AlertZone
 from utils.geojson_renderer import (
     create_floor_plan_figure, render_zone_polygon, extract_rooms_from_geojson,
     find_nearest_room_corner, polygon_to_geojson, geojson_to_polygon_coords
@@ -111,14 +111,10 @@ def render_add_alert_zone(session, floor):
         st.session_state.az_vertices = []
     
     rooms = extract_rooms_from_geojson(floor)
-    focus_areas = session.query(FocusArea).filter(
-        FocusArea.floor_id == floor.id,
-        FocusArea.is_active == True
-    ).all()
     
     creation_method = st.radio(
         "Define zone by:",
-        ["Draw Custom Polygon", "Select Rooms", "From Focus Area", "Rectangle Bounds"],
+        ["Draw Custom Polygon", "Select Rooms", "Rectangle Bounds"],
         horizontal=True,
         key="az_creation_method"
     )
@@ -187,24 +183,6 @@ def render_add_alert_zone(session, floor):
         else:
             st.warning("No rooms found in the floor plan. Upload a floor plan with room definitions.")
     
-    elif creation_method == "From Focus Area":
-        if focus_areas:
-            fa_options = {fa.name: fa.id for fa in focus_areas}
-            selected_fa_name = st.selectbox("Select Focus Area", options=list(fa_options.keys()), key="az_focus_area")
-            
-            if selected_fa_name:
-                selected_fa = next((fa for fa in focus_areas if fa.name == selected_fa_name), None)
-                if selected_fa:
-                    try:
-                        geojson_feature = json.loads(selected_fa.geojson)
-                        coords = geojson_to_polygon_coords(geojson_feature)
-                        if coords:
-                            render_alert_zone_form(session, floor, coords, "focus_area", focus_area_id=selected_fa.id)
-                    except:
-                        st.error("Could not parse focus area geometry.")
-        else:
-            st.warning("No focus areas defined yet. Create focus areas first in 'Focus Areas'.")
-    
     elif creation_method == "Rectangle Bounds":
         col1, col2 = st.columns(2)
         with col1:
@@ -224,7 +202,7 @@ def render_add_alert_zone(session, floor):
             render_alert_zone_form(session, floor, rect_coords, "rectangle")
 
 
-def render_alert_zone_form(session, floor, coords, zone_type, source_rooms=None, focus_area_id=None):
+def render_alert_zone_form(session, floor, coords, zone_type, source_rooms=None):
     with st.form(key=f"save_az_{zone_type}"):
         az_name = st.text_input("Alert Zone Name", value="", key=f"az_name_{zone_type}")
         az_color = st.color_picker("Zone Color", "#FF5722", key=f"az_color_{zone_type}")
@@ -257,7 +235,6 @@ def render_alert_zone_form(session, floor, coords, zone_type, source_rooms=None,
                 
                 new_az = AlertZone(
                     floor_id=floor.id,
-                    focus_area_id=focus_area_id,
                     name=az_name,
                     description=az_description,
                     geojson=json.dumps(geojson_feature),
@@ -285,20 +262,6 @@ def render_floor_plan_with_alert_zones(session, floor):
     st.subheader(f"Floor Plan: {floor.name or f'Level {floor.floor_number}'}")
     
     fig, has_floor_plan = create_floor_plan_figure(floor)
-    
-    focus_areas = session.query(FocusArea).filter(
-        FocusArea.floor_id == floor.id,
-        FocusArea.is_active == True
-    ).all()
-    
-    for fa in focus_areas:
-        try:
-            geojson_feature = json.loads(fa.geojson)
-            coords = geojson_to_polygon_coords(geojson_feature)
-            if coords:
-                render_zone_polygon(fig, coords, fa.name, color=fa.color, opacity=0.15, show_label=False)
-        except:
-            pass
     
     alert_zones = session.query(AlertZone).filter(
         AlertZone.floor_id == floor.id,
@@ -356,10 +319,5 @@ def render_floor_plan_with_alert_zones(session, floor):
     
     st.caption(f"Floor dimensions: {floor.width_meters:.1f}m × {floor.height_meters:.1f}m")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        if focus_areas:
-            st.info(f"{len(focus_areas)} focus area(s) shown (light shading)")
-    with col2:
-        if alert_zones:
-            st.success(f"{len(alert_zones)} alert zone(s) active")
+    if alert_zones:
+        st.success(f"{len(alert_zones)} alert zone(s) active")

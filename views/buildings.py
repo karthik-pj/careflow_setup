@@ -6,7 +6,6 @@ from io import BytesIO
 from PIL import Image
 import json
 import re
-from utils.dwg_parser import parse_dxf_file, dxf_to_geojson, get_dxf_dimensions, detect_dxf_scale
 
 
 def show_pending_message():
@@ -327,249 +326,90 @@ def render_floor_plans():
             return
         
         st.subheader("Upload Floor Plan")
+        st.info("Upload a GeoJSON file containing your architectural floor plan.")
         
         building_options = {b.name: b.id for b in buildings}
         
-        plan_type = st.radio(
-            "Floor Plan Type",
-            ["Image (PNG/JPG)", "DXF (AutoCAD)", "GeoJSON"],
+        selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="geo_building")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="geo_floor_num")
+            floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="geo_floor_name")
+        
+        with col2:
+            st.info("Dimensions will be calculated from GeoJSON bounds")
+        
+        input_method = st.radio(
+            "Input Method",
+            ["Paste GeoJSON", "Upload File"],
             horizontal=True,
-            help="Choose between uploading an image, DXF CAD file, or GeoJSON architectural file",
-            key="floor_plan_type_selector"
+            help="Choose how to provide your GeoJSON floor plan"
         )
         
-        if plan_type == "Image (PNG/JPG)":
-            with st.form("add_floor_image"):
-                selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="img_building")
+        geojson_content = None
+        filename = "floor_plan.geojson"
+        
+        if input_method == "Paste GeoJSON":
+            geojson_text = st.text_area(
+                "Paste GeoJSON Content*",
+                height=300,
+                placeholder='{"type": "FeatureCollection", "features": [...]}',
+                help="Paste the complete GeoJSON content here"
+            )
+            if geojson_text:
+                geojson_content = geojson_text.strip()
+        else:
+            geojson_file = st.file_uploader(
+                "Upload GeoJSON Floor Plan*",
+                type=None,
+                help="Upload a GeoJSON file (.geojson or .json)",
+                key="geo_uploader"
+            )
+            if geojson_file:
+                geojson_content = geojson_file.read().decode('utf-8')
+                filename = geojson_file.name
+        
+        if st.button("Add Floor Plan", type="primary", key="add_geojson_btn"):
+            if not selected_building:
+                st.error("Please select a building")
+            elif not geojson_content:
+                st.error("Please provide GeoJSON content (paste or upload)")
+            else:
+                geojson_data, error = parse_geojson(geojson_content)
                 
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="img_floor_num")
-                    floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="img_floor_name")
-                
-                with col2:
-                    width_meters = st.number_input("Floor Width (meters)", value=50.0, min_value=1.0, max_value=1000.0, key="img_width")
-                    height_meters = st.number_input("Floor Height (meters)", value=50.0, min_value=1.0, max_value=1000.0, key="img_height")
-                
-                floor_plan_file = st.file_uploader(
-                    "Upload Floor Plan Image*",
-                    type=['png', 'jpg', 'jpeg'],
-                    help="Upload an architectural floor plan image",
-                    key="img_uploader"
-                )
-                
-                submitted = st.form_submit_button("Add Floor Plan", type="primary")
-                
-                if submitted:
-                    if not selected_building:
-                        st.error("Please select a building")
-                    elif not floor_plan_file:
-                        st.error("Please upload a floor plan image")
-                    else:
-                        image_data = floor_plan_file.read()
+                if error:
+                    st.error(f"GeoJSON Error: {error}")
+                else:
+                    bounds = extract_geojson_bounds(geojson_data)
+                    
+                    if bounds:
+                        lat_range = bounds['max_lat'] - bounds['min_lat']
+                        lon_range = bounds['max_lon'] - bounds['min_lon']
+                        calc_height = lat_range * 111000
+                        calc_width = lon_range * 111000 * abs(cos_deg(bounds['center_lat']))
                         
                         floor = Floor(
                             building_id=building_options[selected_building],
                             floor_number=floor_number,
                             name=floor_name or f"Floor {floor_number}",
-                            floor_plan_image=image_data,
-                            floor_plan_filename=floor_plan_file.name,
-                            floor_plan_type='image',
-                            width_meters=width_meters,
-                            height_meters=height_meters
+                            floor_plan_geojson=geojson_content,
+                            floor_plan_filename=filename,
+                            floor_plan_type='geojson',
+                            width_meters=round(calc_width, 2),
+                            height_meters=round(calc_height, 2),
+                            origin_lat=bounds['min_lat'],
+                            origin_lon=bounds['min_lon']
                         )
                         session.add(floor)
                         session.commit()
-                        set_success_and_rerun("Floor plan image uploaded successfully!")
-        
-        elif plan_type == "DXF (AutoCAD)":
-            st.info("Upload a DXF file exported from AutoCAD, ArchiCAD, or other CAD software. For DWG files, please export to DXF first (File → Save As → DXF in AutoCAD).")
-            
-            with st.form("add_floor_dxf"):
-                selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="dxf_building")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="dxf_floor_num")
-                    floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="dxf_floor_name")
-                
-                with col2:
-                    scale_option = st.selectbox(
-                        "Scale",
-                        ["Auto-detect", "Millimeters", "Centimeters", "Meters", "Inches", "Feet"],
-                        help="Select the unit used in your DXF file",
-                        key="dxf_scale"
-                    )
-                
-                dxf_file = st.file_uploader(
-                    "Upload DXF Floor Plan*",
-                    accept_multiple_files=False,
-                    help="Upload a DXF file from AutoCAD or similar CAD software (.dxf extension). Drag and drop or click Browse.",
-                    key="dxf_uploader",
-                    label_visibility="visible"
-                )
-                
-                with st.expander("Advanced Settings"):
-                    wall_layers = st.text_input(
-                        "Wall Layer Names (comma-separated)",
-                        value="WALL,WALLS,A-WALL,S-WALL,PARTITION",
-                        help="Layer names that contain walls"
-                    )
-                    room_layers = st.text_input(
-                        "Room Layer Names (comma-separated)",
-                        value="ROOM,ROOMS,A-AREA,A-ROOM,SPACE,ZONE",
-                        help="Layer names that contain rooms/spaces"
-                    )
-                
-                submitted = st.form_submit_button("Add Floor Plan", type="primary")
-                
-                if submitted:
-                    if not selected_building:
-                        st.error("Please select a building")
-                    elif not dxf_file:
-                        st.error("Please upload a DXF file")
-                    elif not dxf_file.name.lower().endswith('.dxf'):
-                        st.error("Please upload a file with .dxf extension. For DWG files, export to DXF first.")
-                    else:
-                        try:
-                            dxf_content = dxf_file.read()
-                            dxf_data = parse_dxf_file(dxf_content)
-                            
-                            if scale_option == "Auto-detect":
-                                scale = detect_dxf_scale(dxf_data)
-                            else:
-                                scale_map = {
-                                    "Millimeters": 0.001,
-                                    "Centimeters": 0.01,
-                                    "Meters": 1.0,
-                                    "Inches": 0.0254,
-                                    "Feet": 0.3048
-                                }
-                                scale = scale_map.get(scale_option, 1.0)
-                            
-                            wall_layer_list = [l.strip() for l in wall_layers.split(',')]
-                            room_layer_list = [l.strip() for l in room_layers.split(',')]
-                            
-                            bounds = dxf_data.get('bounds')
-                            origin_x = bounds['min_x'] if bounds else 0
-                            origin_y = bounds['min_y'] if bounds else 0
-                            
-                            geojson_str = dxf_to_geojson(
-                                dxf_data, 
-                                scale=scale, 
-                                origin_x=origin_x,
-                                origin_y=origin_y,
-                                wall_layers=wall_layer_list,
-                                room_layers=room_layer_list
-                            )
-                            
-                            width, height = get_dxf_dimensions(dxf_data, scale)
-                            
-                            floor = Floor(
-                                building_id=building_options[selected_building],
-                                floor_number=floor_number,
-                                name=floor_name or f"Floor {floor_number}",
-                                floor_plan_geojson=geojson_str,
-                                floor_plan_filename=dxf_file.name,
-                                floor_plan_type='dxf',
-                                width_meters=float(round(width, 2)),
-                                height_meters=float(round(height, 2)),
-                                origin_lat=0,
-                                origin_lon=0
-                            )
-                            session.add(floor)
-                            session.commit()
-                            
-                            entity_count = dxf_data.get('entity_count', 0)
-                            layers = dxf_data.get('layers', [])
-                            set_success_and_rerun(f"DXF floor plan uploaded! Found {entity_count} entities across {len(layers)} layers. Dimensions: {width:.1f}m x {height:.1f}m")
-                            
-                        except Exception as e:
-                            st.error(f"Error parsing DXF file: {str(e)}")
-        
-        else:
-            selected_building = st.selectbox("Select Building*", options=list(building_options.keys()), key="geo_building")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                floor_number = st.number_input("Floor Number*", value=0, step=1, help="Use 0 for ground floor, negative for basement", key="geo_floor_num")
-                floor_name = st.text_input("Floor Name", placeholder="e.g., Ground Floor, Level 1", key="geo_floor_name")
-            
-            with col2:
-                st.info("Dimensions will be calculated from GeoJSON bounds")
-            
-            input_method = st.radio(
-                "Input Method",
-                ["Paste GeoJSON", "Upload File"],
-                horizontal=True,
-                help="Choose how to provide your GeoJSON floor plan"
-            )
-            
-            geojson_content = None
-            filename = "floor_plan.geojson"
-            
-            if input_method == "Paste GeoJSON":
-                geojson_text = st.text_area(
-                    "Paste GeoJSON Content*",
-                    height=300,
-                    placeholder='{"type": "FeatureCollection", "features": [...]}',
-                    help="Paste the complete GeoJSON content here"
-                )
-                if geojson_text:
-                    geojson_content = geojson_text.strip()
-            else:
-                geojson_file = st.file_uploader(
-                    "Upload GeoJSON Floor Plan*",
-                    type=None,
-                    help="Upload a GeoJSON file (.geojson or .json)",
-                    key="geo_uploader"
-                )
-                if geojson_file:
-                    geojson_content = geojson_file.read().decode('utf-8')
-                    filename = geojson_file.name
-            
-            if st.button("Add Floor Plan", type="primary", key="add_geojson_btn"):
-                if not selected_building:
-                    st.error("Please select a building")
-                elif not geojson_content:
-                    st.error("Please provide GeoJSON content (paste or upload)")
-                else:
-                    geojson_data, error = parse_geojson(geojson_content)
-                    
-                    if error:
-                        st.error(f"GeoJSON Error: {error}")
-                    else:
-                        bounds = extract_geojson_bounds(geojson_data)
                         
-                        if bounds:
-                            lat_range = bounds['max_lat'] - bounds['min_lat']
-                            lon_range = bounds['max_lon'] - bounds['min_lon']
-                            calc_height = lat_range * 111000
-                            calc_width = lon_range * 111000 * abs(cos_deg(bounds['center_lat']))
-                            
-                            floor = Floor(
-                                building_id=building_options[selected_building],
-                                floor_number=floor_number,
-                                name=floor_name or f"Floor {floor_number}",
-                                floor_plan_geojson=geojson_content,
-                                floor_plan_filename=filename,
-                                floor_plan_type='geojson',
-                                width_meters=round(calc_width, 2),
-                                height_meters=round(calc_height, 2),
-                                origin_lat=bounds['min_lat'],
-                                origin_lon=bounds['min_lon']
-                            )
-                            session.add(floor)
-                            session.commit()
-                            
-                            rooms = extract_geojson_rooms(geojson_data)
-                            room_count = len(rooms)
-                            set_success_and_rerun(f"GeoJSON floor plan uploaded! Found {room_count} named rooms. Dimensions: {calc_width:.1f}m x {calc_height:.1f}m")
-                        else:
-                            st.error("Could not extract bounds from GeoJSON")
+                        rooms = extract_geojson_rooms(geojson_data)
+                        room_count = len(rooms)
+                        set_success_and_rerun(f"GeoJSON floor plan uploaded! Found {room_count} named rooms. Dimensions: {calc_width:.1f}m x {calc_height:.1f}m")
+                    else:
+                        st.error("Could not extract bounds from GeoJSON")
         
         st.markdown("---")
         st.subheader("Existing Floor Plans")

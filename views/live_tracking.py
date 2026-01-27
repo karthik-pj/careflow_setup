@@ -1,5 +1,5 @@
 import streamlit as st
-from database import get_db_session, Building, Floor, Gateway, Beacon, Position, RSSISignal, MQTTConfig, FocusArea, AlertZone
+from database import get_db_session, Building, Floor, Gateway, Beacon, Position, RSSISignal, MQTTConfig, AlertZone
 from utils.triangulation import GatewayReading, trilaterate_2d, calculate_velocity, filter_outlier_readings
 from utils.signal_processor import get_signal_processor
 from utils.geojson_renderer import (

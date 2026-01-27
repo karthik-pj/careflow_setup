@@ -6,7 +6,7 @@ from io import BytesIO
 import base64
 import numpy as np
 from datetime import datetime, timedelta
-from database import get_db_session, Floor, Building, CoverageZone, FocusArea, Zone, ZoneAlert, Beacon, Position, Gateway
+from database import get_db_session, Floor, Building, CoverageZone, Zone, ZoneAlert, Beacon, Position, Gateway
 from utils.mqtt_publisher import get_mqtt_publisher
 from utils.geojson_renderer import (
     create_floor_plan_figure, render_zone_polygon, extract_rooms_from_geojson,
@@ -444,20 +444,13 @@ def render_coverage_zones_tab():
                 
                 st.subheader("Add Zone")
                 
-                focus_areas = session.query(FocusArea).filter(
-                    FocusArea.floor_id == selected_floor.id,
-                    FocusArea.is_active == True
-                ).all()
-                
                 creation_options = ["Draw Custom Shape", "Enter Rectangle Bounds", "Cover Entire Floor"]
-                if focus_areas:
-                    creation_options.insert(0, "From Focus Area")
                 
                 zone_creation_method = st.radio(
                     "How do you want to define the zone area?",
                     creation_options,
                     horizontal=False,
-                    help="Focus Area: use existing focus area | Draw: enter vertex coordinates | Rectangle: enter X/Y min/max | Entire: full floor coverage",
+                    help="Draw: enter vertex coordinates | Rectangle: enter X/Y min/max | Entire: full floor coverage",
                     key="zone_creation_method"
                 )
                 
@@ -469,23 +462,7 @@ def render_coverage_zones_tab():
                     st.session_state['viewport_bounds'] = None
                 st.session_state['prev_creation_method'] = zone_creation_method
                 
-                selected_focus_area = None
-                if zone_creation_method == "From Focus Area":
-                    fa_options = {fa.name: fa.id for fa in focus_areas}
-                    selected_fa_name = st.selectbox("Select Focus Area", options=list(fa_options.keys()), key="cz_focus_area")
-                    if selected_fa_name:
-                        selected_focus_area = next((fa for fa in focus_areas if fa.name == selected_fa_name), None)
-                        if selected_focus_area:
-                            try:
-                                geojson_feature = json.loads(selected_focus_area.geojson)
-                                coords = geojson_to_polygon_coords(geojson_feature)
-                                if coords:
-                                    st.session_state['pending_polygon'] = coords
-                                    st.success(f"Using geometry from focus area '{selected_fa_name}'")
-                            except Exception:
-                                st.error("Could not parse focus area geometry.")
-                
-                elif zone_creation_method == "Draw Custom Shape":
+                if zone_creation_method == "Draw Custom Shape":
                     st.info("📍 **Add points** using coordinates from the floor plan. Hover over the chart to see X/Y values, then enter them below.")
                     
                     if st.session_state.drawing_vertices:
@@ -619,7 +596,6 @@ def render_coverage_zones_tab():
                             polygon_coords = json.dumps(closed_polygon)
                             new_zone = CoverageZone(
                                 floor_id=selected_floor.id,
-                                focus_area_id=selected_focus_area.id if selected_focus_area else None,
                                 name=zone_name,
                                 description=zone_description,
                                 polygon_coords=polygon_coords,
