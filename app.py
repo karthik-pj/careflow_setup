@@ -2,6 +2,7 @@ import streamlit as st
 from database import init_db
 import base64
 from pathlib import Path
+from utils.translations import t, LANGUAGE_NAMES
 
 st.set_page_config(
     page_title="Careflow Setup",
@@ -10,9 +11,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize theme in session state
+# Initialize theme and language in session state
 if 'dark_mode' not in st.session_state:
     st.session_state.dark_mode = True
+if 'language' not in st.session_state:
+    st.session_state.language = "en"
 
 # Theme-specific CSS variables
 if st.session_state.dark_mode:
@@ -366,6 +369,33 @@ except Exception as e:
 # Signal processor is manually started from MQTT Configuration page
 # This prevents auto-connection attempts that could slow down the app
 
+# Header bar with theme and language selectors in upper right
+header_cols = st.columns([6, 1, 1])
+with header_cols[1]:
+    # Language selector
+    lang_options = list(LANGUAGE_NAMES.keys())
+    lang_labels = list(LANGUAGE_NAMES.values())
+    current_lang_idx = lang_options.index(st.session_state.language) if st.session_state.language in lang_options else 0
+    selected_lang = st.selectbox(
+        "🌐",
+        options=lang_options,
+        format_func=lambda x: LANGUAGE_NAMES[x],
+        index=current_lang_idx,
+        key="lang_selector",
+        label_visibility="collapsed"
+    )
+    if selected_lang != st.session_state.language:
+        st.session_state.language = selected_lang
+        st.rerun()
+
+with header_cols[2]:
+    # Theme toggle
+    theme_icon = "🌙" if st.session_state.dark_mode else "☀️"
+    if st.button(theme_icon, key="theme_btn", help="Toggle Dark/Light Mode"):
+        st.session_state.dark_mode = not st.session_state.dark_mode
+        st.rerun()
+
+# Sidebar logo
 logo_path = Path("attached_assets/CAREFLOW LOGO-Color_1764612034940.png")
 if logo_path.exists():
     with open(logo_path, "rb") as f:
@@ -386,41 +416,26 @@ else:
 st.sidebar.markdown('<div class="careflow-subtitle" style="font-weight: 700; text-transform: uppercase; text-align: center;">CAREFLOW SETUP</div>', unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-# Theme toggle
-theme_col1, theme_col2 = st.sidebar.columns([1, 3])
-with theme_col1:
-    if st.session_state.dark_mode:
-        st.markdown("🌙")
-    else:
-        st.markdown("☀️")
-with theme_col2:
-    if st.toggle("Dark Mode", value=st.session_state.dark_mode, key="theme_toggle"):
-        if not st.session_state.dark_mode:
-            st.session_state.dark_mode = True
-            st.rerun()
-    else:
-        if st.session_state.dark_mode:
-            st.session_state.dark_mode = False
-            st.rerun()
-
-st.sidebar.markdown("---")
+# Navigation with translations
+nav_items = [
+    ("Dashboard", "nav_dashboard"),
+    ("Buildings & Floor Plans", "nav_buildings"),
+    ("Coverage Zones", "nav_coverage_zones"),
+    ("Alert Zones", "nav_alert_zones"),
+    ("Gateway Planning", "nav_gateway_planning"),
+    ("Gateways", "nav_gateways"),
+    ("Beacons", "nav_beacons"),
+    ("MQTT Configuration", "nav_mqtt"),
+    ("Live Tracking", "nav_live_tracking"),
+    ("History Playback", "nav_history"),
+    ("Import/Export", "nav_import_export"),
+    ("Signal Monitor", "nav_signal_monitor")
+]
 
 page = st.sidebar.radio(
     "Navigation",
-    [
-        "Dashboard",
-        "Buildings & Floor Plans",
-        "Coverage Zones",
-        "Alert Zones",
-        "Gateway Planning",
-        "Gateways",
-        "Beacons",
-        "MQTT Configuration",
-        "Live Tracking",
-        "History Playback",
-        "Import/Export",
-        "Signal Monitor"
-    ],
+    [item[0] for item in nav_items],
+    format_func=lambda x: t(next(item[1] for item in nav_items if item[0] == x)),
     index=0,
     key="main_navigation"
 )
@@ -435,15 +450,15 @@ try:
     if processor.is_running:
         heartbeat = processor.last_heartbeat
         if heartbeat and (datetime.utcnow() - heartbeat).total_seconds() < 10:
-            st.sidebar.success("Signal Processor: Running")
+            st.sidebar.success(t("signal_processor_running"))
         elif heartbeat:
-            st.sidebar.warning(f"Signal Processor: Stale ({int((datetime.utcnow() - heartbeat).total_seconds())}s)")
+            st.sidebar.warning(f"{t('signal_processor_stale')} ({int((datetime.utcnow() - heartbeat).total_seconds())}s)")
         else:
-            st.sidebar.success("Signal Processor: Running")
+            st.sidebar.success(t("signal_processor_running"))
     else:
-        st.sidebar.warning("Signal Processor: Stopped")
+        st.sidebar.warning(t("signal_processor_stopped"))
 except Exception:
-    st.sidebar.info("Signal Processor: Not initialized")
+    st.sidebar.info(t("signal_processor_not_init"))
 
 
 if page == "Dashboard":
