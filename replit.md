@@ -28,7 +28,7 @@ The application uses a Streamlit-based interface.
 ### Technical Implementations
 *   **Core Application:** Built with Streamlit (`app.py`).
 *   **Database:** SQLAlchemy ORM with context managers for session management.
-    *   **Schema:** Includes tables for Buildings, Floors, Gateways, Beacons, RSSISignals, Positions, MQTTConfig, Zones, ZoneAlerts, CalibrationPoints, FocusAreas, AlertZones, and CoverageZones.
+    *   **Schema:** Includes tables for Buildings, Floors, Gateways, Beacons, RSSISignals, Positions, MQTTConfig, Zones, ZoneAlerts, CalibrationPoints, AlertZones, and CoverageZones.
 *   **Background Processing:** A dedicated scheduler thread handles continuous position calculation, using Paho MQTT's internal thread for signal storage via callback. This uses a singleton pattern with `@st.cache_resource` and includes heartbeat monitoring.
 *   **Triangulation Engine:**
     *   Utilizes Log-distance path loss model for RSSI to distance conversion.
@@ -36,9 +36,8 @@ The application uses a Streamlit-based interface.
     *   Applies Weighted trilateration, Kalman filtering, and Geometric intersection.
     *   Supports per-gateway calibration (`tx_power`, `path_loss_exponent`).
 *   **Floor Plan Support:**
-    *   Supports image uploads (PNG, JPG, GIF, WebP).
-    *   Integrates GeoJSON for architectural vector files.
-    *   Parses DXF (AutoCAD) files using the `ezdxf` library, supporting various entities and block references.
+    *   GeoJSON-only workflow for architectural vector files (simplified from previous multi-format support).
+    *   Consistent format used throughout for visualization, planning, and tracking.
 *   **MQTT Publisher:** Thread-safe singleton with an async message queue for non-blocking publishing of beacon positions and zone alerts.
 *   **Processing Settings:** Configurable refresh rate, signal window, RSSI smoothing, position smoothing (exponential), and stability threshold to prevent phantom drift.
 *   **Security:** MQTT passwords are referenced by environment variables (e.g., `MQTT_PASSWORD`) and not stored in the database.
@@ -51,14 +50,13 @@ The application uses a Streamlit-based interface.
 *   **Live Tracking:** Visualize beacon positions and movement vectors on floor plans.
 *   **Signal Monitor:** Tool for debugging and monitoring incoming signals.
 *   **Historical Playback:** Replay beacon movement patterns.
-*   **Focus Areas:** Define areas of interest on floor plans for coverage planning and alert zones. Supports polygon draw, room selection, and rectangle bounds with snap-to-room-corner functionality.
-*   **Alert Zones:** Define geofencing zones with entry/exit/dwell time alerts. Can be created from focus areas or drawn directly on floor plans.
+*   **Alert Zones:** Define geofencing zones with entry/exit/dwell time alerts. Supports polygon draw with room-snap functionality.
 *   **Zones & Alerts:** Define geofencing zones with configurable alerts and acknowledgment.
 *   **Analytics Dashboard:** Heatmaps, dwell time analysis, and traffic patterns.
 *   **Import/Export:** Bulk import/export of configurations (JSON/CSV).
 *   **Calibration Wizard:** Improve triangulation accuracy using known beacon positions.
 *   **Gateway Planning:** Plan optimal gateway placement based on target accuracy, with auto-suggestion, coverage visualization, and export of installation guides.
-*   **Coverage Zones:** Define polygonal areas on floor plans with specific target accuracy and priority levels. Can now be created from Focus Areas for consistent geometry reuse.
+*   **Coverage Zones:** Define polygonal areas on floor plans with specific target accuracy and priority levels. Supports polygon draw with room-snap functionality.
 *   **Shared GeoJSON Renderer:** Consolidated utility (`utils/geojson_renderer.py`) for rendering floor plans, zones, gateways, and beacons across all views.
 
 ### System Design Choices
@@ -71,6 +69,5 @@ The application uses a Streamlit-based interface.
 *   **MQTT Broker:** For real-time RSSI signal ingestion and publishing of positions/alerts.
 *   **Moko MKGW-mini03 Gateways (CFS/Careflow branded):** The system is configured to receive data from these specific BLE gateways.
 *   **`paho-mqtt` library:** Used for MQTT client handling (subscription and publishing).
-*   **`ezdxf` library:** For parsing DXF AutoCAD files for floor plan integration.
 *   **Plotly:** For interactive data visualization in the UI (e.g., live tracking).
 *   **Google Fonts (Inter):** For consistent typography.
