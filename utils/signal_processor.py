@@ -110,6 +110,7 @@ class SignalProcessor:
         self._initialized = True
         self._mqtt_handler: Optional[MQTTHandler] = None
         self._running = False
+        self._user_stopped = False
         self._last_error: Optional[str] = None
         self._stats = {
             'signals_received': 0,
@@ -146,14 +147,16 @@ class SignalProcessor:
     def _cleanup(self):
         """Cleanup handler for atexit"""
         if self._running:
-            self.stop()
+            self.stop(user_initiated=False)
     
     def check_and_restart(self) -> bool:
         """Check if the processor should be running but isn't, and restart if needed.
         Also starts the processor if it has never been started.
         Returns True if processor is now running, False if restart failed.
         """
-        # If already running properly, nothing to do
+        if self._user_stopped:
+            return False
+        
         if self.is_running:
             return True
         
@@ -161,18 +164,16 @@ class SignalProcessor:
         needs_start = False
         
         if self._running:
-            # Was running but something is wrong
             if self._mqtt_handler and not self._mqtt_handler.is_connected:
                 needs_restart = True
             if not self._scheduler_thread or not self._scheduler_thread.is_alive():
                 needs_restart = True
         else:
-            # Never started - start it now
             needs_start = True
         
         if needs_restart:
             print("[SignalProcessor] Restarting due to connection or thread issues")
-            self.stop()
+            self.stop(user_initiated=False)
             return self.start()
         
         if needs_start:
@@ -204,10 +205,11 @@ class SignalProcessor:
         if self.is_running:
             return True
         
-        # Always stop existing handler to ensure clean state
+        self._user_stopped = False
+        
         if self._mqtt_handler or self._scheduler_thread:
             print("[SignalProcessor] Cleaning up stale resources before start")
-            self.stop()
+            self.stop(user_initiated=False)
         
         try:
             with get_db_session() as session:
@@ -270,10 +272,17 @@ class SignalProcessor:
             print(f"[SignalProcessor] Start error: {e}")
             return False
     
-    def stop(self):
-        """Stop the signal processor"""
+    def stop(self, user_initiated: bool = True):
+        """Stop the signal processor.
+        
+        Args:
+            user_initiated: If True, prevents auto-restart by check_and_restart()
+        """
         self._running = False
         self._stop_event.set()
+        
+        if user_initiated:
+            self._user_stopped = True
         
         if self._scheduler_thread and self._scheduler_thread.is_alive():
             self._scheduler_thread.join(timeout=5)
