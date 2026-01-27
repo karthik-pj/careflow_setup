@@ -1,34 +1,35 @@
 import streamlit as st
 from database import get_db_session, Building, Floor, Gateway, Beacon, Position, RSSISignal, MQTTConfig
 from utils.signal_processor import get_signal_processor
+from utils.translations import t
 from sqlalchemy import func
 from datetime import datetime, timedelta
 
 
 def render():
-    st.title("Dashboard")
-    st.caption("Overview of your BLE Indoor Positioning System")
+    st.title(t("dashboard_title"))
+    st.caption(t("dashboard_subtitle"))
     
     with get_db_session() as session:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             building_count = session.query(func.count(Building.id)).scalar()
-            st.metric("Buildings", building_count)
+            st.metric(t("buildings"), building_count)
         
         with col2:
             gateway_count = session.query(func.count(Gateway.id)).scalar()
             active_gateways = session.query(func.count(Gateway.id)).filter(Gateway.is_active == True).scalar()
-            st.metric("Gateways", f"{active_gateways}/{gateway_count}", help="Active/Total")
+            st.metric(t("gateways"), f"{active_gateways}/{gateway_count}", help="Active/Total")
         
         with col3:
             beacon_count = session.query(func.count(Beacon.id)).scalar()
             active_beacons = session.query(func.count(Beacon.id)).filter(Beacon.is_active == True).scalar()
-            st.metric("Beacons", f"{active_beacons}/{beacon_count}", help="Active/Total")
+            st.metric(t("beacons"), f"{active_beacons}/{beacon_count}", help="Active/Total")
         
         with col4:
             floor_count = session.query(func.count(Floor.id)).scalar()
-            st.metric("Floor Plans", floor_count)
+            st.metric(t("floor_plans"), floor_count)
         
         st.markdown("---")
         
@@ -36,26 +37,26 @@ def render():
         
         with col_left:
             with st.container(border=True):
-                st.subheader("Signal Processing Status")
+                st.subheader(t("signal_processing_status"))
                 processor = get_signal_processor()
                 
                 if processor.is_running:
-                    st.success("Running")
+                    st.success(t("running"))
                     stats = processor.stats
                     col_a, col_b, col_c = st.columns(3)
-                    col_a.metric("Received", stats['signals_received'])
-                    col_b.metric("Stored", stats['signals_stored'])
-                    col_c.metric("Positions", stats['positions_calculated'])
+                    col_a.metric(t("received"), stats['signals_received'])
+                    col_b.metric(t("stored"), stats['signals_stored'])
+                    col_c.metric(t("positions"), stats['positions_calculated'])
                     if stats['errors'] > 0:
-                        st.warning(f"Errors: {stats['errors']}")
+                        st.warning(f"{t('error')}: {stats['errors']}")
                 else:
-                    st.warning("Stopped")
+                    st.warning(t("stopped"))
                     if processor.last_error:
-                        st.error(f"Last error: {processor.last_error}")
+                        st.error(f"{t('error')}: {processor.last_error}")
                     st.info("Go to Signal Monitor to start processing")
             
             with st.container(border=True):
-                st.subheader("Recent Activity")
+                st.subheader(t("signals") + " (1h)")
                 
                 one_hour_ago = datetime.utcnow() - timedelta(hours=1)
                 recent_signals = session.query(func.count(RSSISignal.id)).filter(
@@ -67,8 +68,8 @@ def render():
                 ).scalar()
                 
                 col_a, col_b = st.columns(2)
-                col_a.metric("Signals (1h)", recent_signals)
-                col_b.metric("Positions (1h)", recent_positions)
+                col_a.metric(t("signals"), recent_signals)
+                col_b.metric(t("positions"), recent_positions)
                 
                 mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
                 if mqtt_config:
@@ -78,8 +79,8 @@ def render():
         
         with col_right:
             with st.container(border=True):
-                st.subheader("Gateway Status")
-                gateways = session.query(Gateway).filter(Gateway.is_active == True).limit(5).all()
+                st.subheader(t("gateway_status"))
+                gateways = session.query(Gateway).filter(Gateway.is_active == True).all()
                 
                 if gateways:
                     for gw in gateways:
@@ -90,9 +91,9 @@ def render():
                         ).scalar()
                         
                         status = "🟢" if recent > 0 else "🔴"
-                        st.write(f"{status} **{gw.name}** — {recent} signals (5 min)")
+                        st.write(f"{status} **{gw.name}** — {recent} {t('signals')} (5 min)")
                 else:
-                    st.info("No gateways configured yet.")
+                    st.info(t("no_gateways"))
         
         st.markdown("---")
         
