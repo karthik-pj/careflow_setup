@@ -10,10 +10,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
+# Initialize theme in session state
+if 'dark_mode' not in st.session_state:
+    st.session_state.dark_mode = True
+
+# Theme-specific CSS variables
+if st.session_state.dark_mode:
+    theme_css = """
     :root {
         --cf-primary: #2e5cbf;
         --cf-primary-dark: #1d4ed8;
@@ -29,11 +32,7 @@ st.markdown("""
         --cf-error: #ef4444;
     }
     
-    .stApp {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    
-    /* Sidebar styling */
+    /* Sidebar styling - Dark */
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1a1f2e 0%, #0e1117 100%);
         border-right: 1px solid var(--cf-border);
@@ -42,6 +41,44 @@ st.markdown("""
     section[data-testid="stSidebar"] * {
         color: var(--cf-text) !important;
     }
+    """
+else:
+    theme_css = """
+    :root {
+        --cf-primary: #2563eb;
+        --cf-primary-dark: #1d4ed8;
+        --cf-primary-light: #3b82f6;
+        --cf-accent: #0ea5e9;
+        --cf-text: #1e293b;
+        --cf-text-light: #64748b;
+        --cf-bg: #ffffff;
+        --cf-bg-subtle: #f8fafc;
+        --cf-border: #e2e8f0;
+        --cf-success: #10b981;
+        --cf-warning: #f59e0b;
+        --cf-error: #ef4444;
+    }
+    
+    /* Sidebar styling - Light */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        border-right: 1px solid var(--cf-border);
+    }
+    
+    section[data-testid="stSidebar"] * {
+        color: var(--cf-text) !important;
+    }
+    """
+
+st.markdown(f"""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    {theme_css}
+    
+    .stApp {{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }}
     
     section[data-testid="stSidebar"] .stRadio > label {
         font-family: 'Inter', sans-serif;
@@ -345,6 +382,25 @@ else:
     )
 
 st.sidebar.markdown('<div class="careflow-subtitle" style="font-weight: 700; text-transform: uppercase; text-align: center;">CAREFLOW SETUP</div>', unsafe_allow_html=True)
+st.sidebar.markdown("---")
+
+# Theme toggle
+theme_col1, theme_col2 = st.sidebar.columns([1, 3])
+with theme_col1:
+    if st.session_state.dark_mode:
+        st.markdown("🌙")
+    else:
+        st.markdown("☀️")
+with theme_col2:
+    if st.toggle("Dark Mode", value=st.session_state.dark_mode, key="theme_toggle"):
+        if not st.session_state.dark_mode:
+            st.session_state.dark_mode = True
+            st.rerun()
+    else:
+        if st.session_state.dark_mode:
+            st.session_state.dark_mode = False
+            st.rerun()
+
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
