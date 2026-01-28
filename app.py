@@ -578,8 +578,7 @@ nav_items = [
     ("Gateways", "nav_gateways"),
     ("Beacons", "nav_beacons"),
     ("MQTT Configuration", "nav_mqtt"),
-    ("Live Monitoring", "nav_live_tracking"),
-    ("Signal Monitor", "nav_signal_monitor")
+    ("Live Monitoring", "nav_live_tracking")
 ]
 
 page = st.sidebar.radio(
@@ -635,6 +634,3 @@ elif page == "MQTT Configuration":
 elif page == "Live Monitoring":
     from views import live_tracking
     live_tracking.render()
-elif page == "Signal Monitor":
-    from views import signal_monitor
-    signal_monitor.render()
