@@ -562,6 +562,93 @@ def extract_building_bounds(floor):
     }
 
 
+def extract_building_polygon(floor):
+    """Extract the largest polygon from floor plan GeoJSON as the building outline."""
+    if not floor.floor_plan_geojson:
+        return None
+    
+    try:
+        geojson_data = json.loads(floor.floor_plan_geojson)
+        polygons = []
+        
+        for feature in geojson_data.get('features', []):
+            geom = feature.get('geometry', {})
+            props = feature.get('properties', {})
+            
+            if geom.get('type') == 'Polygon':
+                coords = geom.get('coordinates', [[]])[0]
+                if len(coords) >= 3:
+                    # Check if this is lat/lon and convert to meters if needed
+                    is_latlon = coords_look_like_latlon(coords, floor)
+                    has_origin = floor.origin_lat is not None and floor.origin_lon is not None
+                    
+                    if is_latlon and has_origin:
+                        converted = []
+                        for c in coords:
+                            if len(c) >= 2:
+                                x, y = latlon_to_meters(c[1], c[0], floor.origin_lat, floor.origin_lon)
+                                converted.append([x, y])
+                        coords = converted
+                    
+                    # Calculate area to find the largest polygon
+                    area = 0
+                    n = len(coords)
+                    for i in range(n):
+                        j = (i + 1) % n
+                        area += coords[i][0] * coords[j][1]
+                        area -= coords[j][0] * coords[i][1]
+                    area = abs(area) / 2
+                    
+                    polygons.append({'coords': coords, 'area': area, 'props': props})
+        
+        if polygons:
+            # Return the largest polygon (likely the building outline)
+            largest = max(polygons, key=lambda p: p['area'])
+            return largest['coords']
+    except Exception:
+        pass
+    
+    return None
+
+
+def offset_point_inside(x1, y1, x2, y2, offset, polygon_center):
+    """Calculate a point offset inward from a wall segment."""
+    # Calculate wall direction vector
+    dx = x2 - x1
+    dy = y2 - y1
+    length = math.sqrt(dx*dx + dy*dy)
+    if length < 0.01:
+        return None
+    
+    # Normalize
+    dx /= length
+    dy /= length
+    
+    # Perpendicular vector (two options: left or right)
+    perp1_x, perp1_y = -dy, dx
+    perp2_x, perp2_y = dy, -dx
+    
+    # Midpoint of wall segment
+    mid_x = (x1 + x2) / 2
+    mid_y = (y1 + y2) / 2
+    
+    # Choose the perpendicular that points toward the polygon center
+    test1_x = mid_x + perp1_x * offset
+    test1_y = mid_y + perp1_y * offset
+    test2_x = mid_x + perp2_x * offset
+    test2_y = mid_y + perp2_y * offset
+    
+    # Distance to center for each option
+    dist1 = math.sqrt((test1_x - polygon_center[0])**2 + (test1_y - polygon_center[1])**2)
+    dist2 = math.sqrt((test2_x - polygon_center[0])**2 + (test2_y - polygon_center[1])**2)
+    
+    # Return the point closer to center (inside the building)
+    if dist1 < dist2:
+        return (test1_x, test1_y)
+    else:
+        return (test2_x, test2_y)
+
+
 def point_in_polygon(x, y, polygon):
     """Ray casting algorithm to check if point is inside polygon.
     
@@ -724,10 +811,14 @@ def suggest_gateway_positions(floor_width: float, floor_height: float, num_gatew
     
     Places gateways along the building perimeter (near walls) with positions
     optimized for triangulation coverage while minimizing the number of gateways.
+    Uses actual building polygon when available to ensure gateways are inside walls.
     """
     suggestions = []
+    wall_offset = 1.5
     
+    building_polygon = None
     if floor:
+        building_polygon = extract_building_polygon(floor)
         bounds = extract_building_bounds(floor)
         bx_min, bx_max = bounds['min_x'], bounds['max_x']
         by_min, by_max = bounds['min_y'], bounds['max_y']
@@ -740,38 +831,110 @@ def suggest_gateway_positions(floor_width: float, floor_height: float, num_gatew
         by_max, bh = float(floor_height), float(floor_height)
         cx, cy = bw / 2, bh / 2
     
-    wall_offset = 1.5
+    if building_polygon and len(building_polygon) >= 3:
+        # Calculate polygon center
+        poly_cx = sum(p[0] for p in building_polygon) / len(building_polygon)
+        poly_cy = sum(p[1] for p in building_polygon) / len(building_polygon)
+        
+        # Calculate total perimeter and wall segments
+        walls = []
+        total_perimeter = 0
+        for i in range(len(building_polygon)):
+            x1, y1 = building_polygon[i][0], building_polygon[i][1]
+            x2, y2 = building_polygon[(i + 1) % len(building_polygon)][0], building_polygon[(i + 1) % len(building_polygon)][1]
+            length = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            if length > 0.5:  # Only consider walls longer than 0.5m
+                walls.append({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'length': length})
+                total_perimeter += length
+        
+        if walls and total_perimeter > 0:
+            # Distribute gateways evenly along perimeter
+            spacing = total_perimeter / num_gateways
+            current_dist = spacing / 2
+            gw_num = 1
+            cumulative = 0
+            
+            for wall in walls:
+                while current_dist < cumulative + wall['length'] and gw_num <= num_gateways:
+                    t = (current_dist - cumulative) / wall['length']
+                    # Point on the wall
+                    wall_x = wall['x1'] + t * (wall['x2'] - wall['x1'])
+                    wall_y = wall['y1'] + t * (wall['y2'] - wall['y1'])
+                    
+                    # Offset point inside the building
+                    offset_point = offset_point_inside(
+                        wall['x1'], wall['y1'], wall['x2'], wall['y2'],
+                        wall_offset, (poly_cx, poly_cy)
+                    )
+                    
+                    if offset_point:
+                        px, py = offset_point
+                        # Verify point is inside building
+                        if point_in_polygon(px, py, building_polygon):
+                            suggestions.append({
+                                "x": round(float(px), 2),
+                                "y": round(float(py), 2),
+                                "name": f"GW-{gw_num} (Wall)"
+                            })
+                        else:
+                            # Fallback: use a point closer to center
+                            fx = wall_x + (poly_cx - wall_x) * 0.2
+                            fy = wall_y + (poly_cy - wall_y) * 0.2
+                            suggestions.append({
+                                "x": round(float(fx), 2),
+                                "y": round(float(fy), 2),
+                                "name": f"GW-{gw_num} (Wall)"
+                            })
+                    else:
+                        # Fallback to wall point slightly inside
+                        fx = wall_x + (poly_cx - wall_x) * 0.1
+                        fy = wall_y + (poly_cy - wall_y) * 0.1
+                        suggestions.append({
+                            "x": round(float(fx), 2),
+                            "y": round(float(fy), 2),
+                            "name": f"GW-{gw_num} (Wall)"
+                        })
+                    
+                    gw_num += 1
+                    current_dist += spacing
+                
+                cumulative += wall['length']
+            
+            return suggestions
     
+    # Fallback to bounding box approach if no polygon available
     if num_gateways <= 2:
         suggestions = [
-            {"x": round(bx_min + wall_offset, 2), "y": round(cy, 2), "name": "GW-1 (West Wall)"},
-            {"x": round(bx_max - wall_offset, 2), "y": round(cy, 2), "name": "GW-2 (East Wall)"},
+            {"x": round(bx_min + wall_offset + bw * 0.1, 2), "y": round(cy, 2), "name": "GW-1 (West Wall)"},
+            {"x": round(bx_max - wall_offset - bw * 0.1, 2), "y": round(cy, 2), "name": "GW-2 (East Wall)"},
         ]
     elif num_gateways == 3:
         suggestions = [
-            {"x": round(bx_min + wall_offset, 2), "y": round(by_min + bh * 0.3, 2), "name": "GW-1 (West)"},
-            {"x": round(bx_max - wall_offset, 2), "y": round(by_min + bh * 0.3, 2), "name": "GW-2 (East)"},
-            {"x": round(cx, 2), "y": round(by_max - wall_offset, 2), "name": "GW-3 (North)"},
+            {"x": round(bx_min + wall_offset + bw * 0.1, 2), "y": round(by_min + bh * 0.3, 2), "name": "GW-1 (West)"},
+            {"x": round(bx_max - wall_offset - bw * 0.1, 2), "y": round(by_min + bh * 0.3, 2), "name": "GW-2 (East)"},
+            {"x": round(cx, 2), "y": round(by_max - wall_offset - bh * 0.1, 2), "name": "GW-3 (North)"},
         ]
     elif num_gateways == 4:
+        inset = wall_offset + min(bw, bh) * 0.1
         suggestions = [
-            {"x": round(bx_min + wall_offset, 2), "y": round(by_min + wall_offset, 2), "name": "GW-1 (SW Corner)"},
-            {"x": round(bx_max - wall_offset, 2), "y": round(by_min + wall_offset, 2), "name": "GW-2 (SE Corner)"},
-            {"x": round(bx_max - wall_offset, 2), "y": round(by_max - wall_offset, 2), "name": "GW-3 (NE Corner)"},
-            {"x": round(bx_min + wall_offset, 2), "y": round(by_max - wall_offset, 2), "name": "GW-4 (NW Corner)"},
+            {"x": round(bx_min + inset, 2), "y": round(by_min + inset, 2), "name": "GW-1 (SW Corner)"},
+            {"x": round(bx_max - inset, 2), "y": round(by_min + inset, 2), "name": "GW-2 (SE Corner)"},
+            {"x": round(bx_max - inset, 2), "y": round(by_max - inset, 2), "name": "GW-3 (NE Corner)"},
+            {"x": round(bx_min + inset, 2), "y": round(by_max - inset, 2), "name": "GW-4 (NW Corner)"},
         ]
     else:
-        perimeter = 2 * (bw + bh)
+        inset = wall_offset + min(bw, bh) * 0.05
+        perimeter = 2 * (bw + bh) - 8 * inset
         spacing = perimeter / num_gateways
         
         current_dist = spacing / 2
         gw_num = 1
         
         sides = [
-            ('S', bx_min, by_min + wall_offset, bx_max, by_min + wall_offset, bw),
-            ('E', bx_max - wall_offset, by_min, bx_max - wall_offset, by_max, bh),
-            ('N', bx_max, by_max - wall_offset, bx_min, by_max - wall_offset, bw),
-            ('W', bx_min + wall_offset, by_max, bx_min + wall_offset, by_min, bh),
+            ('S', bx_min + inset, by_min + inset, bx_max - inset, by_min + inset, bw - 2*inset),
+            ('E', bx_max - inset, by_min + inset, bx_max - inset, by_max - inset, bh - 2*inset),
+            ('N', bx_max - inset, by_max - inset, bx_min + inset, by_max - inset, bw - 2*inset),
+            ('W', bx_min + inset, by_max - inset, bx_min + inset, by_min + inset, bh - 2*inset),
         ]
         
         cumulative = 0
