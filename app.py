@@ -573,7 +573,6 @@ st.sidebar.markdown("---")
 nav_items = [
     ("Dashboard", "nav_dashboard"),
     ("Buildings & Floor Plans", "nav_buildings"),
-    ("Coverage Zones", "nav_coverage_zones"),
     ("Alert Zones", "nav_alert_zones"),
     ("Gateway Planning", "nav_gateway_planning"),
     ("Gateways", "nav_gateways"),
@@ -619,9 +618,6 @@ if page == "Dashboard":
 elif page == "Buildings & Floor Plans":
     from views import buildings
     buildings.render()
-elif page == "Coverage Zones":
-    from views import coverage_zones
-    coverage_zones.show()
 elif page == "Alert Zones":
     from views import alert_zones
     alert_zones.render()
