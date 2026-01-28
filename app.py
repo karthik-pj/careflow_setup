@@ -579,7 +579,7 @@ nav_items = [
     ("Gateways", "nav_gateways"),
     ("Beacons", "nav_beacons"),
     ("MQTT Configuration", "nav_mqtt"),
-    ("Live Tracking", "nav_live_tracking"),
+    ("Live Monitoring", "nav_live_tracking"),
     ("Import/Export", "nav_import_export"),
     ("Signal Monitor", "nav_signal_monitor")
 ]
@@ -637,7 +637,7 @@ elif page == "Beacons":
 elif page == "MQTT Configuration":
     from views import mqtt_config
     mqtt_config.render()
-elif page == "Live Tracking":
+elif page == "Live Monitoring":
     from views import live_tracking
     live_tracking.render()
 elif page == "Import/Export":
