@@ -599,15 +599,15 @@ try:
     if processor.is_running:
         heartbeat = processor.last_heartbeat
         if heartbeat and (datetime.utcnow() - heartbeat).total_seconds() < 10:
-            st.sidebar.success(t("signal_processor_running"))
+            st.sidebar.markdown(f'<div style="background:#5ab5b0;color:white;padding:8px 12px;border-radius:4px;font-size:0.9em;"><span style="margin-right:6px;">●</span>{t("signal_processor_running")}</div>', unsafe_allow_html=True)
         elif heartbeat:
-            st.sidebar.warning(f"{t('signal_processor_stale')} ({int((datetime.utcnow() - heartbeat).total_seconds())}s)")
+            st.sidebar.markdown(f'<div style="background:#e5a33d;color:white;padding:8px 12px;border-radius:4px;font-size:0.9em;"><span style="margin-right:6px;">●</span>{t("signal_processor_stale")} ({int((datetime.utcnow() - heartbeat).total_seconds())}s)</div>', unsafe_allow_html=True)
         else:
-            st.sidebar.success(t("signal_processor_running"))
+            st.sidebar.markdown(f'<div style="background:#5ab5b0;color:white;padding:8px 12px;border-radius:4px;font-size:0.9em;"><span style="margin-right:6px;">●</span>{t("signal_processor_running")}</div>', unsafe_allow_html=True)
     else:
-        st.sidebar.warning(t("signal_processor_stopped"))
+        st.sidebar.markdown(f'<div style="background:#c9553d;color:white;padding:8px 12px;border-radius:4px;font-size:0.9em;"><span style="margin-right:6px;">●</span>{t("signal_processor_stopped")}</div>', unsafe_allow_html=True)
 except Exception:
-    st.sidebar.info(t("signal_processor_not_init"))
+    st.sidebar.markdown(f'<div style="background:#888;color:white;padding:8px 12px;border-radius:4px;font-size:0.9em;"><span style="margin-right:6px;">●</span>{t("signal_processor_not_init")}</div>', unsafe_allow_html=True)
 
 
 if page == "Dashboard":
