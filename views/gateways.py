@@ -1,9 +1,11 @@
 import streamlit as st
-from database import get_db_session, get_session, Building, Floor, Gateway, RSSISignal
+from database import get_db_session, get_session, Building, Floor, Gateway, RSSISignal, Beacon, Zone
 from datetime import datetime, timedelta
 from sqlalchemy import func
 import re
 import json
+import csv
+from io import StringIO
 import math
 import plotly.graph_objects as go
 from streamlit_plotly_events import plotly_events
@@ -354,6 +356,221 @@ def create_floor_plan_figure(floor, gateways=None, rooms=None, for_click=False, 
     )
     
     return fig
+
+
+def render_import_export():
+    """Render the import/export section for gateways and configurations."""
+    tab1, tab2 = st.tabs(["Export", "Import"])
+    
+    with tab1:
+        with get_db_session() as session:
+            export_type = st.selectbox(
+                "What to Export",
+                options=["Gateways", "Beacons", "All Configurations"],
+                key="export_type_select"
+            )
+            
+            export_format = st.radio(
+                "Format",
+                options=["JSON", "CSV"],
+                horizontal=True,
+                key="export_format_radio"
+            )
+            
+            if st.button("Generate Export", type="primary", key="gen_export_btn"):
+                gateway_data = []
+                beacon_data = []
+                
+                if export_type == "Gateways" or export_type == "All Configurations":
+                    gateways = session.query(Gateway).all()
+                    for gw in gateways:
+                        building = session.query(Building).filter(Building.id == gw.building_id).first()
+                        floor = session.query(Floor).filter(Floor.id == gw.floor_id).first()
+                        gateway_data.append({
+                            'mac_address': gw.mac_address,
+                            'name': gw.name,
+                            'description': gw.description or '',
+                            'building_name': building.name if building else '',
+                            'floor_number': floor.floor_number if floor else 0,
+                            'x_position': gw.x_position,
+                            'y_position': gw.y_position,
+                            'latitude': gw.latitude or '',
+                            'longitude': gw.longitude or '',
+                            'mqtt_topic': gw.mqtt_topic or '',
+                            'wifi_ssid': gw.wifi_ssid or '',
+                            'signal_calibration': gw.signal_strength_calibration,
+                            'path_loss_exponent': gw.path_loss_exponent,
+                            'is_active': gw.is_active
+                        })
+                
+                if export_type == "Beacons" or export_type == "All Configurations":
+                    beacons = session.query(Beacon).all()
+                    for b in beacons:
+                        floor = session.query(Floor).filter(Floor.id == b.floor_id).first() if b.floor_id else None
+                        beacon_data.append({
+                            'mac_address': b.mac_address,
+                            'name': b.name,
+                            'uuid': b.uuid or '',
+                            'major': b.major or 0,
+                            'minor': b.minor or 0,
+                            'description': b.description or '',
+                            'resource_type': b.resource_type or '',
+                            'assigned_to': b.assigned_to or '',
+                            'is_fixed': b.is_fixed,
+                            'floor_number': floor.floor_number if floor else '',
+                            'fixed_x': b.fixed_x or '',
+                            'fixed_y': b.fixed_y or '',
+                            'is_active': b.is_active
+                        })
+                
+                if export_format == "JSON":
+                    if export_type == "All Configurations":
+                        export_data = {"gateways": gateway_data, "beacons": beacon_data}
+                    elif export_type == "Gateways":
+                        export_data = gateway_data
+                    else:
+                        export_data = beacon_data
+                    
+                    json_str = json.dumps(export_data, indent=2)
+                    st.download_button(
+                        "📥 Download JSON",
+                        data=json_str,
+                        file_name=f"careflow_{export_type.lower().replace(' ', '_')}.json",
+                        mime="application/json"
+                    )
+                else:
+                    if export_type == "Gateways" and gateway_data:
+                        output = StringIO()
+                        writer = csv.DictWriter(output, fieldnames=gateway_data[0].keys())
+                        writer.writeheader()
+                        writer.writerows(gateway_data)
+                        st.download_button(
+                            "📥 Download CSV",
+                            data=output.getvalue(),
+                            file_name="careflow_gateways.csv",
+                            mime="text/csv"
+                        )
+                    elif export_type == "Beacons" and beacon_data:
+                        output = StringIO()
+                        writer = csv.DictWriter(output, fieldnames=beacon_data[0].keys())
+                        writer.writeheader()
+                        writer.writerows(beacon_data)
+                        st.download_button(
+                            "📥 Download CSV",
+                            data=output.getvalue(),
+                            file_name="careflow_beacons.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        st.info("Use JSON format for All Configurations export.")
+    
+    with tab2:
+        st.subheader("Import Configuration")
+        
+        import_type = st.selectbox(
+            "What to Import",
+            options=["Gateways", "Beacons"],
+            key="import_type_select"
+        )
+        
+        uploaded_file = st.file_uploader(
+            "Upload JSON or CSV file",
+            type=['json', 'csv'],
+            key="import_file_uploader"
+        )
+        
+        if uploaded_file:
+            try:
+                content = uploaded_file.read().decode('utf-8')
+                
+                if uploaded_file.name.endswith('.json'):
+                    data = json.loads(content)
+                    if isinstance(data, dict):
+                        if import_type == "Gateways" and 'gateways' in data:
+                            data = data['gateways']
+                        elif import_type == "Beacons" and 'beacons' in data:
+                            data = data['beacons']
+                else:
+                    reader = csv.DictReader(StringIO(content))
+                    data = list(reader)
+                
+                st.success(f"Found {len(data)} {import_type.lower()} to import")
+                
+                if st.button("Import Now", type="primary", key="import_now_btn"):
+                    with get_db_session() as session:
+                        imported = 0
+                        skipped = 0
+                        
+                        for item in data:
+                            try:
+                                if import_type == "Gateways":
+                                    existing = session.query(Gateway).filter(
+                                        Gateway.mac_address == item.get('mac_address', '')
+                                    ).first()
+                                    
+                                    if existing:
+                                        skipped += 1
+                                        continue
+                                    
+                                    building = session.query(Building).filter(
+                                        Building.name == item.get('building_name', '')
+                                    ).first()
+                                    
+                                    floor = None
+                                    if building:
+                                        floor = session.query(Floor).filter(
+                                            Floor.building_id == building.id,
+                                            Floor.floor_number == int(item.get('floor_number', 0))
+                                        ).first()
+                                    
+                                    if building and floor:
+                                        gw = Gateway(
+                                            mac_address=item['mac_address'],
+                                            name=item.get('name', ''),
+                                            description=item.get('description', ''),
+                                            building_id=building.id,
+                                            floor_id=floor.id,
+                                            x_position=float(item.get('x_position', 0)),
+                                            y_position=float(item.get('y_position', 0)),
+                                            is_active=str(item.get('is_active', 'true')).lower() == 'true'
+                                        )
+                                        session.add(gw)
+                                        imported += 1
+                                    else:
+                                        skipped += 1
+                                
+                                elif import_type == "Beacons":
+                                    existing = session.query(Beacon).filter(
+                                        Beacon.mac_address == item.get('mac_address', '')
+                                    ).first()
+                                    
+                                    if existing:
+                                        skipped += 1
+                                        continue
+                                    
+                                    beacon = Beacon(
+                                        mac_address=item['mac_address'],
+                                        name=item.get('name', ''),
+                                        uuid=item.get('uuid', ''),
+                                        major=int(item.get('major', 0)) if item.get('major') else None,
+                                        minor=int(item.get('minor', 0)) if item.get('minor') else None,
+                                        description=item.get('description', ''),
+                                        resource_type=item.get('resource_type', ''),
+                                        assigned_to=item.get('assigned_to', ''),
+                                        is_active=str(item.get('is_active', 'true')).lower() == 'true'
+                                    )
+                                    session.add(beacon)
+                                    imported += 1
+                                    
+                            except Exception as e:
+                                skipped += 1
+                        
+                        session.commit()
+                        st.success(f"Imported {imported} {import_type.lower()}, skipped {skipped}")
+                        st.rerun()
+                        
+            except Exception as e:
+                st.error(f"Error reading file: {e}")
 
 
 def render():
@@ -738,3 +955,8 @@ def render():
         
         else:
             st.info("No gateways configured yet. Add your first gateway above.")
+        
+        # Import/Export Section
+        st.markdown("---")
+        with st.expander("📥 Import / Export", expanded=False):
+            render_import_export()
