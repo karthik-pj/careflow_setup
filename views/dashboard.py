@@ -216,29 +216,3 @@ def render():
         with st.expander("📡 Signal Monitor", expanded=False):
             render_signal_monitor(session)
         
-        st.markdown("---")
-        
-        with st.container(border=True):
-            st.subheader("Quick Setup Guide")
-            
-            if building_count == 0:
-                st.write("1️⃣ Create a building and upload floor plans")
-            else:
-                st.write("~~1️⃣ Create a building and upload floor plans~~ ✅")
-            
-            if gateway_count == 0:
-                st.write("2️⃣ Add your Careflow BLE Gateways")
-            else:
-                st.write("~~2️⃣ Add your Careflow BLE Gateways~~ ✅")
-            
-            if beacon_count == 0:
-                st.write("3️⃣ Register your BLE Beacons")
-            else:
-                st.write("~~3️⃣ Register your BLE Beacons~~ ✅")
-            
-            if not mqtt_config:
-                st.write("4️⃣ Configure the MQTT broker connection")
-            else:
-                st.write("~~4️⃣ Configure the MQTT broker connection~~ ✅")
-            
-            st.write("5️⃣ Start live tracking to see beacon positions")
