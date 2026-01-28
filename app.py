@@ -390,9 +390,9 @@ st.markdown("""
         align-items: center;
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        padding: 8px 14px;
-        gap: 10px;
+        border-radius: 6px;
+        padding: 5px 10px;
+        gap: 6px;
         cursor: pointer;
         transition: all 0.2s ease;
     }
@@ -403,8 +403,8 @@ st.markdown("""
     }
     
     .globe-icon {
-        width: 18px;
-        height: 18px;
+        width: 14px;
+        height: 14px;
         opacity: 0.7;
     }
     
@@ -412,18 +412,18 @@ st.markdown("""
         background: transparent;
         border: none;
         padding: 0;
-        padding-right: 20px;
+        padding-right: 14px;
         font-family: 'Inter', sans-serif;
-        font-size: 0.9rem;
+        font-size: 0.8rem;
         font-weight: 400;
         color: var(--cf-text);
         cursor: pointer;
         appearance: none;
         -webkit-appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 0 center;
-        min-width: 70px;
+        min-width: 60px;
     }
     
     .header-controls select:focus {
@@ -433,13 +433,13 @@ st.markdown("""
     .header-controls select option {
         background: #1a1f2e;
         color: #fafafa;
-        padding: 8px;
+        padding: 6px;
     }
     
     .theme-toggle-btn {
         background: transparent;
         border: none;
-        padding: 8px;
+        padding: 5px;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -453,8 +453,8 @@ st.markdown("""
     }
     
     .theme-toggle-btn svg {
-        width: 20px;
-        height: 20px;
+        width: 16px;
+        height: 16px;
     }
 </style>
 """, unsafe_allow_html=True)
