@@ -96,25 +96,28 @@ st.markdown("""
     
     /* Logo container */
     .logo-container {
-        padding: 10px 0;
-        margin-bottom: 5px;
-        text-align: center;
+        padding: 16px 0 8px 0;
+        text-align: left;
+        padding-left: 8px;
     }
     
     .logo-container img {
-        width: 100%;
-        max-width: 180px;
+        width: auto;
+        max-width: 140px;
         height: auto;
         display: inline-block;
     }
     
     .careflow-subtitle {
         font-family: 'Inter', sans-serif;
-        font-size: 0.7rem;
+        font-size: 0.65rem;
         color: var(--cf-text-light);
-        margin-top: 8px;
-        letter-spacing: 1.5px;
-        font-weight: 600;
+        margin-top: 4px;
+        letter-spacing: 1px;
+        font-weight: 500;
+        text-align: left;
+        padding-left: 8px;
+        opacity: 0.7;
     }
     
     /* Headers */
@@ -369,31 +372,117 @@ except Exception as e:
 # Signal processor is manually started from MQTT Configuration page
 # This prevents auto-connection attempts that could slow down the app
 
-# Header bar with theme and language selectors in upper right
-header_cols = st.columns([6, 1, 1])
-with header_cols[1]:
-    # Language selector
-    lang_options = list(LANGUAGE_NAMES.keys())
-    lang_labels = list(LANGUAGE_NAMES.values())
-    current_lang_idx = lang_options.index(st.session_state.language) if st.session_state.language in lang_options else 0
-    selected_lang = st.selectbox(
-        "🌐",
-        options=lang_options,
-        format_func=lambda x: LANGUAGE_NAMES[x],
-        index=current_lang_idx,
-        key="lang_selector",
-        label_visibility="collapsed"
-    )
-    if selected_lang != st.session_state.language:
-        st.session_state.language = selected_lang
-        st.rerun()
+# Header controls styling - fixed position in upper right
+st.markdown("""
+<style>
+    .header-controls {
+        position: fixed;
+        top: 14px;
+        right: 60px;
+        z-index: 999999;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .header-controls select {
+        background: transparent;
+        border: 1px solid var(--cf-border);
+        border-radius: 6px;
+        padding: 6px 28px 6px 10px;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--cf-text);
+        cursor: pointer;
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        min-width: 100px;
+    }
+    
+    .header-controls select:hover {
+        border-color: var(--cf-primary);
+    }
+    
+    .header-controls select:focus {
+        outline: none;
+        border-color: var(--cf-primary);
+        box-shadow: 0 0 0 2px rgba(46, 92, 191, 0.2);
+    }
+    
+    .theme-toggle-btn {
+        background: transparent;
+        border: 1px solid var(--cf-border);
+        border-radius: 6px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 1rem;
+        color: var(--cf-text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
+    
+    .theme-toggle-btn:hover {
+        border-color: var(--cf-primary);
+        background: var(--cf-bg-subtle);
+    }
+</style>
+""", unsafe_allow_html=True)
 
-with header_cols[2]:
-    # Theme toggle
-    theme_icon = "🌙" if st.session_state.dark_mode else "☀️"
-    if st.button(theme_icon, key="theme_btn", help="Toggle Dark/Light Mode"):
-        st.session_state.dark_mode = not st.session_state.dark_mode
+# Language and theme controls in header
+lang_options = list(LANGUAGE_NAMES.keys())
+current_lang = st.session_state.language
+theme_icon = "🌙" if st.session_state.dark_mode else "☀️"
+
+# Build language options HTML
+lang_options_html = "".join([
+    f'<option value="{code}" {"selected" if code == current_lang else ""}>{LANGUAGE_NAMES[code]}</option>'
+    for code in lang_options
+])
+
+st.markdown(f"""
+<div class="header-controls">
+    <select id="langSelect" onchange="handleLangChange(this.value)">
+        {lang_options_html}
+    </select>
+    <button class="theme-toggle-btn" onclick="handleThemeToggle()" title="Toggle Dark/Light Mode">
+        {theme_icon}
+    </button>
+</div>
+<script>
+    function handleLangChange(lang) {{
+        const params = new URLSearchParams(window.location.search);
+        params.set('lang', lang);
+        window.location.search = params.toString();
+    }}
+    function handleThemeToggle() {{
+        const params = new URLSearchParams(window.location.search);
+        params.set('toggle_theme', 'true');
+        window.location.search = params.toString();
+    }}
+</script>
+""", unsafe_allow_html=True)
+
+# Handle URL parameters for language and theme changes
+query_params = st.query_params
+if 'lang' in query_params:
+    new_lang = query_params['lang']
+    if new_lang in lang_options and new_lang != st.session_state.language:
+        st.session_state.language = new_lang
+        st.query_params.clear()
         st.rerun()
+    elif new_lang == st.session_state.language:
+        st.query_params.clear()
+
+if 'toggle_theme' in query_params:
+    st.session_state.dark_mode = not st.session_state.dark_mode
+    st.query_params.clear()
+    st.rerun()
 
 # Sidebar logo
 logo_path = Path("attached_assets/CAREFLOW LOGO-Color_1764612034940.png")
