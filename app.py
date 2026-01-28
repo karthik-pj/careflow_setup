@@ -92,13 +92,19 @@ st.markdown("""
     
     div[data-testid="stSidebarHeader"] {
         padding-top: 0;
+        min-height: 0 !important;
+    }
+    
+    section[data-testid="stSidebar"] > div:first-child {
+        padding-top: 0.5rem;
     }
     
     /* Logo container */
     .logo-container {
-        padding: 8px 0 4px 0;
+        padding: 0 0 4px 0;
         text-align: left;
         padding-left: 8px;
+        margin-top: 0;
     }
     
     .logo-container img {
@@ -382,12 +388,12 @@ st.markdown("""
 <style>
     .header-controls {
         position: fixed;
-        top: 12px;
+        top: 8px;
         right: 70px;
         z-index: 999999;
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 12px;
     }
     
     .lang-selector-wrapper {
