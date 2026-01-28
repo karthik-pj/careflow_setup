@@ -16,7 +16,7 @@ def render_signal_monitor(session):
         mqtt_config = session.query(MQTTConfig).filter(MQTTConfig.is_active == True).first()
         
         if mqtt_config:
-            st.success(f"Broker: {mqtt_config.broker_host}:{mqtt_config.broker_port}")
+            st.markdown(f'<div style="background:#008ed3;color:white;padding:8px 12px;border-radius:4px;margin-bottom:8px;">Broker: {mqtt_config.broker_host}:{mqtt_config.broker_port}</div>', unsafe_allow_html=True)
             st.caption(f"Topic: {mqtt_config.topic_prefix}#")
             
             processor = get_signal_processor()
@@ -25,31 +25,30 @@ def render_signal_monitor(session):
             st.markdown("##### Signal Processor")
             
             if processor.is_running:
-                st.success("🟢 Running")
+                st.markdown('<div style="background:#5ab5b0;color:white;padding:8px 12px;border-radius:4px;margin-bottom:8px;">● Running</div>', unsafe_allow_html=True)
                 stats = processor.stats
                 st.write(f"**Signals received:** {stats['signals_received']}")
                 st.write(f"**Signals stored:** {stats['signals_stored']}")
                 st.write(f"**Positions calculated:** {stats['positions_calculated']}")
                 if stats['errors'] > 0:
-                    st.warning(f"**Errors:** {stats['errors']}")
+                    st.markdown(f'<div style="background:#e5a33d;color:white;padding:6px 10px;border-radius:4px;font-size:0.9em;">Errors: {stats["errors"]}</div>', unsafe_allow_html=True)
                 
                 if st.button("Stop Processing", key="dash_stop_proc"):
                     processor.stop()
                     st.rerun()
             else:
-                st.warning("🔴 Stopped")
+                st.markdown('<div style="background:#c9553d;color:white;padding:8px 12px;border-radius:4px;margin-bottom:8px;">● Stopped</div>', unsafe_allow_html=True)
                 if processor.last_error:
-                    st.error(f"Error: {processor.last_error}")
+                    st.markdown(f'<div style="background:#c9553d;color:white;padding:6px 10px;border-radius:4px;font-size:0.85em;margin-bottom:8px;">{processor.last_error}</div>', unsafe_allow_html=True)
                 
                 if st.button("Start Processing", type="primary", key="dash_start_proc"):
                     if processor.start():
-                        st.success("Processor started!")
                         st.rerun()
                     else:
                         st.error(processor.last_error or "Failed to start")
         else:
-            st.error("No MQTT broker configured")
-            st.info("Go to MQTT Configuration to set up your broker")
+            st.markdown('<div style="background:#666;color:white;padding:8px 12px;border-radius:4px;">No MQTT broker configured</div>', unsafe_allow_html=True)
+            st.caption("Go to MQTT Configuration to set up your broker")
     
     with col2:
         st.markdown("##### Recent Signals")
@@ -140,19 +139,19 @@ def render():
                 processor = get_signal_processor()
                 
                 if processor.is_running:
-                    st.success(t("running"))
+                    st.markdown('<div style="background:#5ab5b0;color:white;padding:6px 12px;border-radius:4px;display:inline-block;">● ' + t("running") + '</div>', unsafe_allow_html=True)
                     stats = processor.stats
                     col_a, col_b, col_c = st.columns(3)
                     col_a.metric(t("received"), stats['signals_received'])
                     col_b.metric(t("stored"), stats['signals_stored'])
                     col_c.metric(t("positions"), stats['positions_calculated'])
                     if stats['errors'] > 0:
-                        st.warning(f"{t('error')}: {stats['errors']}")
+                        st.markdown(f'<div style="background:#e5a33d;color:white;padding:4px 10px;border-radius:4px;font-size:0.9em;margin-top:8px;">{t("error")}: {stats["errors"]}</div>', unsafe_allow_html=True)
                 else:
-                    st.warning(t("stopped"))
+                    st.markdown('<div style="background:#c9553d;color:white;padding:6px 12px;border-radius:4px;display:inline-block;">● ' + t("stopped") + '</div>', unsafe_allow_html=True)
                     if processor.last_error:
-                        st.error(f"{t('error')}: {processor.last_error}")
-                    st.info("Go to Signal Monitor to start processing")
+                        st.markdown(f'<div style="background:#c9553d;color:white;padding:4px 10px;border-radius:4px;font-size:0.85em;margin-top:8px;">{processor.last_error}</div>', unsafe_allow_html=True)
+                    st.caption("Expand Signal Monitor below to start processing")
             
             with st.container(border=True):
                 st.subheader(t("signals") + " (1h)")
@@ -196,19 +195,19 @@ def render():
                         ).scalar()
                         
                         if recent > 0:
-                            status = "🟢"
+                            color = "#5ab5b0"  # Teal - active
                             status_text = f"{recent} {t('signals')} (5 min)"
                         elif mqtt_last_seen and mqtt_last_seen >= two_min_ago:
-                            status = "🔵"
+                            color = "#008ed3"  # CareFlow Blue - connected
                             status_text = t("connected")
                         elif mqtt_last_seen:
-                            status = "🔴"
+                            color = "#c9553d"  # Red - offline
                             status_text = t("offline")
                         else:
-                            status = "⚪"
+                            color = "#888"  # Gray - installed
                             status_text = t("installed")
                         
-                        st.write(f"{status} **{gw.name}** — {status_text}")
+                        st.markdown(f'<div style="display:flex;align-items:center;margin-bottom:6px;"><span style="display:inline-block;width:10px;height:10px;background:{color};border-radius:50%;margin-right:8px;"></span><strong>{gw.name}</strong><span style="color:#888;margin-left:8px;">— {status_text}</span></div>', unsafe_allow_html=True)
                 else:
                     st.info(t("no_gateways"))
         
