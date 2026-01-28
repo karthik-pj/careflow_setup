@@ -57,37 +57,6 @@ def render():
                 st.error("No MQTT broker configured")
                 st.info("Go to MQTT Configuration to set up your broker")
             
-            st.markdown("---")
-            st.subheader("Manual Signal Entry")
-            st.caption("For testing without live gateways")
-            
-            with st.form("manual_signal"):
-                gateways = session.query(Gateway).filter(Gateway.is_active == True).all()
-                beacons = session.query(Beacon).filter(Beacon.is_active == True).all()
-                
-                if gateways and beacons:
-                    gateway_options = {f"{g.name} ({g.mac_address})": g.id for g in gateways}
-                    beacon_options = {f"{b.name} ({b.mac_address})": b.id for b in beacons}
-                    
-                    selected_gateway = st.selectbox("Gateway", options=list(gateway_options.keys()))
-                    selected_beacon = st.selectbox("Beacon", options=list(beacon_options.keys()))
-                    rssi_value = st.slider("RSSI (dBm)", -100, -20, -65)
-                    tx_power = st.number_input("TX Power", value=-59, min_value=-100, max_value=0)
-                    
-                    if st.form_submit_button("Add Signal"):
-                        signal = RSSISignal(
-                            gateway_id=gateway_options[selected_gateway],
-                            beacon_id=beacon_options[selected_beacon],
-                            rssi=rssi_value,
-                            tx_power=tx_power,
-                            timestamp=datetime.utcnow()
-                        )
-                        session.add(signal)
-                        st.success("Signal added!")
-                        st.rerun()
-                else:
-                    st.warning("Add gateways and beacons first")
-                    st.form_submit_button("Add Signal", disabled=True)
         
         with col2:
             st.subheader("Recent Signals")
