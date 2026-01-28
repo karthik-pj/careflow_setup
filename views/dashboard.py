@@ -105,6 +105,13 @@ def render_signal_monitor(session):
 
 
 def render():
+    # Reduce top padding to move content upward
+    st.markdown("""
+        <style>
+        .block-container { padding-top: 1rem !important; }
+        </style>
+    """, unsafe_allow_html=True)
+    
     st.title(t("dashboard_title"))
     st.caption(t("dashboard_subtitle"))
     
