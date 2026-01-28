@@ -91,12 +91,15 @@ st.markdown("""
     }
     
     div[data-testid="stSidebarHeader"] {
-        padding-top: 0;
-        min-height: 0 !important;
+        display: none !important;
     }
     
-    section[data-testid="stSidebar"] > div:first-child {
-        padding-top: 0.5rem;
+    section[data-testid="stSidebar"] > div {
+        padding-top: 0 !important;
+    }
+    
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+        padding-top: 0.5rem !important;
     }
     
     /* Logo container */
@@ -140,7 +143,12 @@ st.markdown("""
     
     /* Reduce top padding of main content */
     .main .block-container {
-        padding-top: 1rem;
+        padding-top: 0.5rem !important;
+    }
+    
+    .stApp > header {
+        height: 0 !important;
+        min-height: 0 !important;
     }
     
     /* Card styling */
