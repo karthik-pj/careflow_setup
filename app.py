@@ -91,12 +91,12 @@ st.markdown("""
     }
     
     div[data-testid="stSidebarHeader"] {
-        padding-top: 1rem;
+        padding-top: 0;
     }
     
     /* Logo container */
     .logo-container {
-        padding: 16px 0 8px 0;
+        padding: 8px 0 4px 0;
         text-align: left;
         padding-left: 8px;
     }
@@ -130,6 +130,11 @@ st.markdown("""
     h1 {
         font-size: 1.875rem;
         margin-bottom: 0.5rem;
+    }
+    
+    /* Reduce top padding of main content */
+    .main .block-container {
+        padding-top: 1rem;
     }
     
     /* Card styling */
