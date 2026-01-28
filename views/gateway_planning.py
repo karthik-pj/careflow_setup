@@ -805,154 +805,195 @@ def suggest_gateway_positions_for_zone(zone_bounds, num_gateways, signal_range=1
     return suggestions
 
 
+def get_wall_segments_from_geojson(floor):
+    """Extract all wall segments from floor plan GeoJSON.
+    
+    Returns list of wall segments with their coordinates and lengths.
+    Walls are the edges of all polygons (rooms, building outline).
+    """
+    walls = []
+    if not floor.floor_plan_geojson:
+        return walls
+    
+    try:
+        geojson_data = json.loads(floor.floor_plan_geojson)
+        
+        for feature in geojson_data.get('features', []):
+            geom = feature.get('geometry', {})
+            
+            if geom.get('type') == 'Polygon':
+                coords = geom.get('coordinates', [[]])[0]
+                if len(coords) >= 3:
+                    # Check if this is lat/lon and convert to meters if needed
+                    is_latlon = coords_look_like_latlon(coords, floor)
+                    has_origin = floor.origin_lat is not None and floor.origin_lon is not None
+                    
+                    if is_latlon and has_origin:
+                        converted = []
+                        for c in coords:
+                            if len(c) >= 2:
+                                x, y = latlon_to_meters(c[1], c[0], floor.origin_lat, floor.origin_lon)
+                                converted.append([x, y])
+                        coords = converted
+                    
+                    # Extract wall segments
+                    for i in range(len(coords) - 1):
+                        x1, y1 = coords[i][0], coords[i][1]
+                        x2, y2 = coords[i + 1][0], coords[i + 1][1]
+                        length = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+                        if length > 1.0:  # Only walls longer than 1m
+                            walls.append({
+                                'x1': x1, 'y1': y1,
+                                'x2': x2, 'y2': y2,
+                                'length': length,
+                                'mid_x': (x1 + x2) / 2,
+                                'mid_y': (y1 + y2) / 2
+                            })
+    except Exception:
+        pass
+    
+    return walls
+
+
 def suggest_gateway_positions(floor_width: float, floor_height: float, num_gateways: int, 
                               signal_range: float = 15.0, floor=None) -> list:
-    """Suggest optimal gateway positions inside the actual building footprint.
+    """Suggest optimal gateway positions ON WALLS with overlapping signal coverage.
     
-    Places gateways along the building perimeter (near walls) with positions
-    optimized for triangulation coverage while minimizing the number of gateways.
-    Uses actual building polygon when available to ensure gateways are inside walls.
+    Gateways are placed:
+    1. Directly on walls (where power sockets would be)
+    2. Spaced so signal ranges overlap (spacing = ~1.5x signal_range for good triangulation)
+    3. Along the perimeter to maximize coverage
     """
     suggestions = []
-    wall_offset = 1.5
     
-    building_polygon = None
+    # Get building bounds
     if floor:
-        building_polygon = extract_building_polygon(floor)
         bounds = extract_building_bounds(floor)
         bx_min, bx_max = bounds['min_x'], bounds['max_x']
         by_min, by_max = bounds['min_y'], bounds['max_y']
         bw = bounds['width']
         bh = bounds['height']
         cx, cy = bounds['center_x'], bounds['center_y']
+        
+        # Get all wall segments from the floor plan
+        walls = get_wall_segments_from_geojson(floor)
     else:
         bx_min, by_min = 0, 0
         bx_max, bw = float(floor_width), float(floor_width)
         by_max, bh = float(floor_height), float(floor_height)
         cx, cy = bw / 2, bh / 2
-    
-    if building_polygon and len(building_polygon) >= 3:
-        # Calculate polygon center
-        poly_cx = sum(p[0] for p in building_polygon) / len(building_polygon)
-        poly_cy = sum(p[1] for p in building_polygon) / len(building_polygon)
-        
-        # Calculate total perimeter and wall segments
         walls = []
-        total_perimeter = 0
-        for i in range(len(building_polygon)):
-            x1, y1 = building_polygon[i][0], building_polygon[i][1]
-            x2, y2 = building_polygon[(i + 1) % len(building_polygon)][0], building_polygon[(i + 1) % len(building_polygon)][1]
-            length = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            if length > 0.5:  # Only consider walls longer than 0.5m
-                walls.append({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2, 'length': length})
-                total_perimeter += length
-        
-        if walls and total_perimeter > 0:
-            # Distribute gateways evenly along perimeter
-            spacing = total_perimeter / num_gateways
-            current_dist = spacing / 2
-            gw_num = 1
-            cumulative = 0
-            
-            for wall in walls:
-                while current_dist < cumulative + wall['length'] and gw_num <= num_gateways:
-                    t = (current_dist - cumulative) / wall['length']
-                    # Point on the wall
-                    wall_x = wall['x1'] + t * (wall['x2'] - wall['x1'])
-                    wall_y = wall['y1'] + t * (wall['y2'] - wall['y1'])
-                    
-                    # Offset point inside the building
-                    offset_point = offset_point_inside(
-                        wall['x1'], wall['y1'], wall['x2'], wall['y2'],
-                        wall_offset, (poly_cx, poly_cy)
-                    )
-                    
-                    if offset_point:
-                        px, py = offset_point
-                        # Verify point is inside building
-                        if point_in_polygon(px, py, building_polygon):
-                            suggestions.append({
-                                "x": round(float(px), 2),
-                                "y": round(float(py), 2),
-                                "name": f"GW-{gw_num} (Wall)"
-                            })
-                        else:
-                            # Fallback: use a point closer to center
-                            fx = wall_x + (poly_cx - wall_x) * 0.2
-                            fy = wall_y + (poly_cy - wall_y) * 0.2
-                            suggestions.append({
-                                "x": round(float(fx), 2),
-                                "y": round(float(fy), 2),
-                                "name": f"GW-{gw_num} (Wall)"
-                            })
-                    else:
-                        # Fallback to wall point slightly inside
-                        fx = wall_x + (poly_cx - wall_x) * 0.1
-                        fy = wall_y + (poly_cy - wall_y) * 0.1
-                        suggestions.append({
-                            "x": round(float(fx), 2),
-                            "y": round(float(fy), 2),
-                            "name": f"GW-{gw_num} (Wall)"
-                        })
-                    
-                    gw_num += 1
-                    current_dist += spacing
-                
-                cumulative += wall['length']
-            
-            return suggestions
     
-    # Fallback to bounding box approach if no polygon available
-    if num_gateways <= 2:
-        suggestions = [
-            {"x": round(bx_min + wall_offset + bw * 0.1, 2), "y": round(cy, 2), "name": "GW-1 (West Wall)"},
-            {"x": round(bx_max - wall_offset - bw * 0.1, 2), "y": round(cy, 2), "name": "GW-2 (East Wall)"},
-        ]
-    elif num_gateways == 3:
-        suggestions = [
-            {"x": round(bx_min + wall_offset + bw * 0.1, 2), "y": round(by_min + bh * 0.3, 2), "name": "GW-1 (West)"},
-            {"x": round(bx_max - wall_offset - bw * 0.1, 2), "y": round(by_min + bh * 0.3, 2), "name": "GW-2 (East)"},
-            {"x": round(cx, 2), "y": round(by_max - wall_offset - bh * 0.1, 2), "name": "GW-3 (North)"},
-        ]
-    elif num_gateways == 4:
-        inset = wall_offset + min(bw, bh) * 0.1
-        suggestions = [
-            {"x": round(bx_min + inset, 2), "y": round(by_min + inset, 2), "name": "GW-1 (SW Corner)"},
-            {"x": round(bx_max - inset, 2), "y": round(by_min + inset, 2), "name": "GW-2 (SE Corner)"},
-            {"x": round(bx_max - inset, 2), "y": round(by_max - inset, 2), "name": "GW-3 (NE Corner)"},
-            {"x": round(bx_min + inset, 2), "y": round(by_max - inset, 2), "name": "GW-4 (NW Corner)"},
-        ]
-    else:
-        inset = wall_offset + min(bw, bh) * 0.05
-        perimeter = 2 * (bw + bh) - 8 * inset
-        spacing = perimeter / num_gateways
+    if walls:
+        # Calculate total wall length
+        total_length = sum(w['length'] for w in walls)
         
-        current_dist = spacing / 2
+        # Optimal spacing for overlapping coverage (signals should overlap)
+        # For triangulation, gateways should see the same beacon, so overlap is important
+        optimal_spacing = signal_range * 1.4  # ~70% overlap between adjacent gateways
+        
+        # Calculate how many gateways needed based on perimeter and spacing
+        needed_for_coverage = max(3, int(total_length / optimal_spacing))
+        actual_gateways = min(num_gateways, needed_for_coverage)
+        
+        # Spacing based on requested number of gateways
+        spacing = total_length / actual_gateways
+        
+        # Place gateways along walls at regular intervals
+        current_dist = spacing / 2  # Start at half spacing from the start
         gw_num = 1
-        
-        sides = [
-            ('S', bx_min + inset, by_min + inset, bx_max - inset, by_min + inset, bw - 2*inset),
-            ('E', bx_max - inset, by_min + inset, bx_max - inset, by_max - inset, bh - 2*inset),
-            ('N', bx_max - inset, by_max - inset, bx_min + inset, by_max - inset, bw - 2*inset),
-            ('W', bx_min + inset, by_max - inset, bx_min + inset, by_min + inset, bh - 2*inset),
-        ]
-        
         cumulative = 0
-        for side_name, x1, y1, x2, y2, length in sides:
-            while current_dist < cumulative + length and gw_num <= num_gateways:
-                t = (current_dist - cumulative) / length
-                x = x1 + t * (x2 - x1)
-                y = y1 + t * (y2 - y1)
+        
+        # Sort walls to create a continuous path (approximate)
+        sorted_walls = sorted(walls, key=lambda w: (w['mid_y'], w['mid_x']))
+        
+        for wall in sorted_walls:
+            while current_dist < cumulative + wall['length'] and gw_num <= actual_gateways:
+                # Position along this wall segment
+                t = (current_dist - cumulative) / wall['length']
+                t = max(0.1, min(0.9, t))  # Keep away from corners
+                
+                # Point directly ON the wall
+                wall_x = wall['x1'] + t * (wall['x2'] - wall['x1'])
+                wall_y = wall['y1'] + t * (wall['y2'] - wall['y1'])
+                
+                # Determine wall orientation for naming
+                dx = abs(wall['x2'] - wall['x1'])
+                dy = abs(wall['y2'] - wall['y1'])
+                if dx > dy:
+                    # Horizontal wall
+                    if wall['mid_y'] < cy:
+                        wall_name = "South Wall"
+                    else:
+                        wall_name = "North Wall"
+                else:
+                    # Vertical wall
+                    if wall['mid_x'] < cx:
+                        wall_name = "West Wall"
+                    else:
+                        wall_name = "East Wall"
                 
                 suggestions.append({
-                    "x": round(float(x), 2),
-                    "y": round(float(y), 2),
-                    "name": f"GW-{gw_num} ({side_name} Wall)"
+                    "x": round(float(wall_x), 2),
+                    "y": round(float(wall_y), 2),
+                    "name": f"GW-{gw_num} ({wall_name})"
                 })
+                
                 gw_num += 1
                 current_dist += spacing
             
-            cumulative += length
+            cumulative += wall['length']
+        
+        # If we couldn't place all gateways, add remaining ones
+        while gw_num <= actual_gateways:
+            # Place on longest walls we haven't used much
+            longest_wall = max(walls, key=lambda w: w['length'])
+            t = 0.5 + (gw_num * 0.1) % 0.4  # Vary position
+            wall_x = longest_wall['x1'] + t * (longest_wall['x2'] - longest_wall['x1'])
+            wall_y = longest_wall['y1'] + t * (longest_wall['y2'] - longest_wall['y1'])
+            
+            suggestions.append({
+                "x": round(float(wall_x), 2),
+                "y": round(float(wall_y), 2),
+                "name": f"GW-{gw_num} (Wall)"
+            })
+            gw_num += 1
+        
+        return suggestions
+    
+    # Fallback: place gateways along rectangular boundary walls
+    perimeter = 2 * (bw + bh)
+    spacing = perimeter / num_gateways
+    
+    # Define the 4 walls of the bounding rectangle
+    rect_walls = [
+        ('South Wall', bx_min, by_min, bx_max, by_min, bw),
+        ('East Wall', bx_max, by_min, bx_max, by_max, bh),
+        ('North Wall', bx_max, by_max, bx_min, by_max, bw),
+        ('West Wall', bx_min, by_max, bx_min, by_min, bh),
+    ]
+    
+    current_dist = spacing / 2
+    gw_num = 1
+    cumulative = 0
+    
+    for wall_name, x1, y1, x2, y2, length in rect_walls:
+        while current_dist < cumulative + length and gw_num <= num_gateways:
+            t = (current_dist - cumulative) / length
+            t = max(0.1, min(0.9, t))  # Keep away from corners
+            
+            x = x1 + t * (x2 - x1)
+            y = y1 + t * (y2 - y1)
+            
+            suggestions.append({
+                "x": round(float(x), 2),
+                "y": round(float(y), 2),
+                "name": f"GW-{gw_num} ({wall_name})"
+            })
+            gw_num += 1
+            current_dist += spacing
+        
+        cumulative += length
     
     return suggestions
 
