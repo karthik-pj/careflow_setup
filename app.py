@@ -372,64 +372,89 @@ except Exception as e:
 # Signal processor is manually started from MQTT Configuration page
 # This prevents auto-connection attempts that could slow down the app
 
-# Header controls styling - fixed position in upper right
+# Header controls styling - fixed position in upper right (CareAlert style)
 st.markdown("""
 <style>
     .header-controls {
         position: fixed;
-        top: 14px;
-        right: 60px;
+        top: 12px;
+        right: 70px;
         z-index: 999999;
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 16px;
+    }
+    
+    .lang-selector-wrapper {
+        display: flex;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 8px 14px;
+        gap: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .lang-selector-wrapper:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+    
+    .globe-icon {
+        width: 18px;
+        height: 18px;
+        opacity: 0.7;
     }
     
     .header-controls select {
         background: transparent;
-        border: 1px solid var(--cf-border);
-        border-radius: 6px;
-        padding: 6px 28px 6px 10px;
+        border: none;
+        padding: 0;
+        padding-right: 20px;
         font-family: 'Inter', sans-serif;
-        font-size: 0.85rem;
-        font-weight: 500;
+        font-size: 0.9rem;
+        font-weight: 400;
         color: var(--cf-text);
         cursor: pointer;
         appearance: none;
         -webkit-appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
-        background-position: right 8px center;
-        min-width: 100px;
-    }
-    
-    .header-controls select:hover {
-        border-color: var(--cf-primary);
+        background-position: right 0 center;
+        min-width: 70px;
     }
     
     .header-controls select:focus {
         outline: none;
-        border-color: var(--cf-primary);
-        box-shadow: 0 0 0 2px rgba(46, 92, 191, 0.2);
+    }
+    
+    .header-controls select option {
+        background: #1a1f2e;
+        color: #fafafa;
+        padding: 8px;
     }
     
     .theme-toggle-btn {
         background: transparent;
-        border: 1px solid var(--cf-border);
-        border-radius: 6px;
-        padding: 6px 10px;
+        border: none;
+        padding: 8px;
         cursor: pointer;
-        font-size: 1rem;
-        color: var(--cf-text);
         display: flex;
         align-items: center;
         justify-content: center;
         transition: all 0.2s ease;
+        opacity: 0.7;
     }
     
     .theme-toggle-btn:hover {
-        border-color: var(--cf-primary);
-        background: var(--cf-bg-subtle);
+        opacity: 1;
+    }
+    
+    .theme-toggle-btn svg {
+        width: 20px;
+        height: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -437,7 +462,6 @@ st.markdown("""
 # Language and theme controls in header
 lang_options = list(LANGUAGE_NAMES.keys())
 current_lang = st.session_state.language
-theme_icon = "🌙" if st.session_state.dark_mode else "☀️"
 
 # Build language options HTML
 lang_options_html = "".join([
@@ -445,13 +469,34 @@ lang_options_html = "".join([
     for code in lang_options
 ])
 
+# Globe SVG icon
+globe_svg = '''<svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M2 12h20"/>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+</svg>'''
+
+# Moon/Sun SVG icons
+if st.session_state.dark_mode:
+    theme_svg = '''<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>'''
+else:
+    theme_svg = '''<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="5"/>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+    </svg>'''
+
 st.markdown(f"""
 <div class="header-controls">
-    <select id="langSelect" onchange="handleLangChange(this.value)">
-        {lang_options_html}
-    </select>
+    <div class="lang-selector-wrapper">
+        {globe_svg}
+        <select id="langSelect" onchange="handleLangChange(this.value)">
+            {lang_options_html}
+        </select>
+    </div>
     <button class="theme-toggle-btn" onclick="handleThemeToggle()" title="Toggle Dark/Light Mode">
-        {theme_icon}
+        {theme_svg}
     </button>
 </div>
 <script>
