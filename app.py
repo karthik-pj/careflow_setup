@@ -566,7 +566,7 @@ else:
         unsafe_allow_html=True
     )
 
-st.sidebar.markdown('<div class="careflow-subtitle" style="font-weight: 700; text-transform: uppercase; text-align: center;">CAREFLOW SETUP</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="careflow-subtitle">SENSOR INFRASTRUCTURE</div>', unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
 # Navigation with translations
