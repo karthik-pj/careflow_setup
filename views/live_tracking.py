@@ -134,13 +134,17 @@ def render_geojson_floor_plan(fig, floor):
     
     try:
         geojson_data = json.loads(floor.floor_plan_geojson)
+        rendered_something = False
         
         for feature in geojson_data.get('features', []):
             props = feature.get('properties', {})
             geom = feature.get('geometry', {})
             geom_type = props.get('geomType', '')
+            geometry_type = geom.get('type', '')
+            name = props.get('name', 'Unnamed')
             
-            if geom_type == 'room' and geom.get('type') == 'Polygon':
+            # Handle Polygon geometry (rooms, buildings, zones)
+            if geometry_type == 'Polygon':
                 coords = geom.get('coordinates', [[]])[0]
                 if coords:
                     xs = []
@@ -151,31 +155,77 @@ def render_geojson_floor_plan(fig, floor):
                         xs.append(x)
                         ys.append(y)
                     
-                    name = props.get('name', 'Unnamed')
+                    if geom_type == 'room':
+                        fill_color = 'rgba(46, 92, 191, 0.15)'
+                        line_color = '#2e5cbf'
+                    elif geom_type == 'building':
+                        fill_color = 'rgba(200, 200, 200, 0.1)'
+                        line_color = '#666'
+                    else:
+                        fill_color = 'rgba(180, 180, 180, 0.1)'
+                        line_color = '#888'
                     
                     fig.add_trace(go.Scatter(
                         x=xs,
                         y=ys,
                         fill='toself',
-                        fillcolor='rgba(46, 92, 191, 0.15)',
-                        line=dict(color='#2e5cbf', width=1),
+                        fillcolor=fill_color,
+                        line=dict(color=line_color, width=1),
                         name=name,
                         hovertemplate=f"<b>{name}</b><extra></extra>",
                         mode='lines',
                         showlegend=False
                     ))
                     
-                    center_x = sum(xs) / len(xs)
-                    center_y = sum(ys) / len(ys)
-                    fig.add_annotation(
-                        x=center_x,
-                        y=center_y,
-                        text=name[:12],
-                        showarrow=False,
-                        font=dict(size=8, color='#1a1a1a')
-                    )
+                    if geom_type == 'room' and xs:
+                        center_x = sum(xs) / len(xs)
+                        center_y = sum(ys) / len(ys)
+                        fig.add_annotation(
+                            x=center_x,
+                            y=center_y,
+                            text=name[:12],
+                            showarrow=False,
+                            font=dict(size=8, color='#1a1a1a')
+                        )
+                    rendered_something = True
             
-            elif geom_type == 'wall' and geom.get('type') == 'LineString':
+            # Handle MultiPolygon geometry (buildings with multiple parts)
+            elif geometry_type == 'MultiPolygon':
+                all_coords = geom.get('coordinates', [])
+                for polygon_coords in all_coords:
+                    if polygon_coords and len(polygon_coords) > 0:
+                        coords = polygon_coords[0]  # Outer ring
+                        if coords:
+                            xs = []
+                            ys = []
+                            for c in coords:
+                                lon, lat = c[0], c[1]
+                                x, y = latlon_to_meters(lat, lon, floor.origin_lat, floor.origin_lon)
+                                xs.append(x)
+                                ys.append(y)
+                            
+                            if geom_type == 'building':
+                                fill_color = 'rgba(200, 200, 200, 0.15)'
+                                line_color = '#555'
+                            else:
+                                fill_color = 'rgba(180, 180, 180, 0.1)'
+                                line_color = '#666'
+                            
+                            fig.add_trace(go.Scatter(
+                                x=xs,
+                                y=ys,
+                                fill='toself',
+                                fillcolor=fill_color,
+                                line=dict(color=line_color, width=1.5),
+                                name=name,
+                                hovertemplate=f"<b>{name}</b><extra></extra>",
+                                mode='lines',
+                                showlegend=False
+                            ))
+                            rendered_something = True
+            
+            # Handle LineString geometry (walls)
+            elif geometry_type == 'LineString':
                 coords = geom.get('coordinates', [])
                 if coords:
                     xs = []
@@ -197,8 +247,9 @@ def render_geojson_floor_plan(fig, floor):
                         showlegend=False,
                         hoverinfo='skip'
                     ))
+                    rendered_something = True
         
-        return True
+        return rendered_something
     except Exception as e:
         return False
 
