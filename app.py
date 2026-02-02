@@ -39,14 +39,91 @@ if st.session_state.dark_mode:
         --cf-error: #ef4444;
     }
     
+    /* Main app background - Dark */
+    .stApp, .main, [data-testid="stAppViewContainer"] {
+        background-color: #0e1117 !important;
+    }
+    
+    .stApp > header {
+        background-color: #0e1117 !important;
+    }
+    
+    /* Main content text - Dark */
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+    .stApp p, .stApp span, .stApp label, .stApp div {
+        color: #fafafa !important;
+    }
+    
+    .stApp .stMarkdown, .stApp [data-testid="stMarkdownContainer"] {
+        color: #fafafa !important;
+    }
+    
     /* Sidebar styling - Dark */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1a1f2e 0%, #0e1117 100%);
-        border-right: 1px solid var(--cf-border);
+        background: linear-gradient(180deg, #1a1f2e 0%, #0e1117 100%) !important;
+        border-right: 1px solid #2d3748;
+    }
+    
+    section[data-testid="stSidebar"] > div {
+        background: transparent !important;
     }
     
     section[data-testid="stSidebar"] * {
-        color: var(--cf-text) !important;
+        color: #fafafa !important;
+    }
+    
+    /* Radio buttons (navigation) - Dark */
+    section[data-testid="stSidebar"] .stRadio > div {
+        background-color: transparent !important;
+    }
+    
+    section[data-testid="stSidebar"] .stRadio label {
+        color: #fafafa !important;
+        background-color: transparent !important;
+    }
+    
+    section[data-testid="stSidebar"] .stRadio label:hover {
+        background-color: rgba(46, 92, 191, 0.2) !important;
+    }
+    
+    section[data-testid="stSidebar"] .stRadio label[data-checked="true"] {
+        background-color: rgba(46, 92, 191, 0.3) !important;
+    }
+    
+    /* Input fields - Dark */
+    .stTextInput input, .stSelectbox select, .stNumberInput input, .stTextArea textarea {
+        background-color: #1a1f2e !important;
+        color: #fafafa !important;
+        border-color: #2d3748 !important;
+    }
+    
+    /* Cards and containers - Dark */
+    .stExpander, [data-testid="stExpander"] {
+        background-color: #1a1f2e !important;
+        border-color: #2d3748 !important;
+    }
+    
+    /* Metrics - Dark */
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
+        color: #fafafa !important;
+    }
+    
+    /* Tables - Dark */
+    .stDataFrame, .stTable {
+        background-color: #1a1f2e !important;
+    }
+    
+    /* Tabs - Dark */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: transparent !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        color: #a0aec0 !important;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        color: #fafafa !important;
     }
     """
 else:
@@ -66,14 +143,91 @@ else:
         --cf-error: #ef4444;
     }
     
+    /* Main app background - Light */
+    .stApp, .main, [data-testid="stAppViewContainer"] {
+        background-color: #ffffff !important;
+    }
+    
+    .stApp > header {
+        background-color: #ffffff !important;
+    }
+    
+    /* Main content text - Light */
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+    .stApp p, .stApp span, .stApp label, .stApp div {
+        color: #1e293b !important;
+    }
+    
+    .stApp .stMarkdown, .stApp [data-testid="stMarkdownContainer"] {
+        color: #1e293b !important;
+    }
+    
     /* Sidebar styling - Light */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-        border-right: 1px solid var(--cf-border);
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%) !important;
+        border-right: 1px solid #e2e8f0;
+    }
+    
+    section[data-testid="stSidebar"] > div {
+        background: transparent !important;
     }
     
     section[data-testid="stSidebar"] * {
-        color: var(--cf-text) !important;
+        color: #1e293b !important;
+    }
+    
+    /* Radio buttons (navigation) - Light */
+    section[data-testid="stSidebar"] .stRadio > div {
+        background-color: transparent !important;
+    }
+    
+    section[data-testid="stSidebar"] .stRadio label {
+        color: #1e293b !important;
+        background-color: transparent !important;
+    }
+    
+    section[data-testid="stSidebar"] .stRadio label:hover {
+        background-color: rgba(37, 99, 235, 0.1) !important;
+    }
+    
+    section[data-testid="stSidebar"] .stRadio label[data-checked="true"] {
+        background-color: rgba(37, 99, 235, 0.15) !important;
+    }
+    
+    /* Input fields - Light */
+    .stTextInput input, .stSelectbox select, .stNumberInput input, .stTextArea textarea {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border-color: #e2e8f0 !important;
+    }
+    
+    /* Cards and containers - Light */
+    .stExpander, [data-testid="stExpander"] {
+        background-color: #f8fafc !important;
+        border-color: #e2e8f0 !important;
+    }
+    
+    /* Metrics - Light */
+    [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
+        color: #1e293b !important;
+    }
+    
+    /* Tables - Light */
+    .stDataFrame, .stTable {
+        background-color: #ffffff !important;
+    }
+    
+    /* Tabs - Light */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: transparent !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        color: #64748b !important;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        color: #1e293b !important;
     }
     """
 
