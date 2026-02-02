@@ -233,6 +233,31 @@ else:
     .stExpander, [data-testid="stExpander"] {
         background-color: #f8fafc !important;
         border-color: #e2e8f0 !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    
+    /* Expander header - Light */
+    .stExpander > div:first-child,
+    [data-testid="stExpander"] > div:first-child,
+    .stExpander summary,
+    [data-testid="stExpanderHeader"],
+    .streamlit-expanderHeader {
+        background-color: #f1f5f9 !important;
+        color: #1e293b !important;
+    }
+    
+    .stExpander summary span,
+    [data-testid="stExpanderHeader"] span,
+    .streamlit-expanderHeader span {
+        color: #1e293b !important;
+    }
+    
+    /* Expander content - Light */
+    .stExpander > div:last-child,
+    [data-testid="stExpanderDetails"],
+    .streamlit-expanderContent {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
     }
     
     /* Metrics - Light */
