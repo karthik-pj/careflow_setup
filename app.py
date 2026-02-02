@@ -194,6 +194,34 @@ else:
         background-color: rgba(37, 99, 235, 0.15) !important;
     }
     
+    /* Buttons - Light */
+    .stButton button, section[data-testid="stSidebar"] .stButton button {
+        background-color: #f1f5f9 !important;
+        color: #1e293b !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    
+    .stButton button:hover, section[data-testid="stSidebar"] .stButton button:hover {
+        background-color: #e2e8f0 !important;
+        border-color: #cbd5e1 !important;
+    }
+    
+    .stButton button[kind="primary"] {
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+        border-color: #2563eb !important;
+    }
+    
+    /* Selectbox - Light */
+    .stSelectbox > div > div {
+        background-color: #ffffff !important;
+        border-color: #e2e8f0 !important;
+    }
+    
+    .stSelectbox [data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+    }
+    
     /* Input fields - Light */
     .stTextInput input, .stSelectbox select, .stNumberInput input, .stTextArea textarea {
         background-color: #ffffff !important;
@@ -670,8 +698,30 @@ else:
         <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
     </svg>'''
 
-header_col1, header_col2, header_col3 = st.columns([8, 1, 1])
+st.markdown("""
+<style>
+    div[data-testid="column"]:has(> div > div > div > .header-lang-select) {
+        max-width: 80px !important;
+    }
+    div[data-testid="column"]:has(> div > div > div > .header-theme-btn) {
+        max-width: 40px !important;
+    }
+    .header-lang-select select {
+        font-size: 0.75rem !important;
+        padding: 4px 8px !important;
+        min-height: 28px !important;
+    }
+    .header-theme-btn button {
+        padding: 4px 8px !important;
+        min-height: 28px !important;
+        font-size: 0.8rem !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+header_col1, header_col2, header_col3 = st.columns([10, 1, 1])
 with header_col2:
+    st.markdown('<div class="header-lang-select">', unsafe_allow_html=True)
     selected_lang = st.selectbox(
         "Language",
         options=lang_options,
@@ -680,15 +730,18 @@ with header_col2:
         key="lang_selector",
         label_visibility="collapsed"
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     if selected_lang != st.session_state.language:
         st.session_state.language = selected_lang
         st.rerun()
 
 with header_col3:
-    theme_icon = "🌙" if st.session_state.dark_mode else "☀️"
-    if st.button(theme_icon, key="theme_toggle", help="Toggle Dark/Light Mode"):
+    st.markdown('<div class="header-theme-btn">', unsafe_allow_html=True)
+    theme_label = "☽" if st.session_state.dark_mode else "☀"
+    if st.button(theme_label, key="theme_toggle", help="Toggle Dark/Light Mode"):
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # Sidebar logo
 logo_path = Path("attached_assets/CAREFLOW LOGO-Color_1764612034940.png")
@@ -713,11 +766,12 @@ st.sidebar.markdown('<div class="careflow-subtitle">SENSOR INFRASTRUCTURE</div>'
 current_user = get_current_user()
 if current_user:
     role_display = {'admin': 'Admin', 'operator': 'Operator', 'viewer': 'Viewer'}.get(current_user['role'], current_user['role'])
+    text_color = "#fafafa" if st.session_state.dark_mode else "#1e293b"
     st.sidebar.markdown(f"""
         <div style="background: rgba(46, 92, 191, 0.1); border: 1px solid rgba(46, 92, 191, 0.3); 
                     border-radius: 8px; padding: 10px 12px; margin: 8px 0;">
-            <div style="font-size: 0.9em; font-weight: 500;">{current_user['full_name'] or current_user['username']}</div>
-            <div style="font-size: 0.75em; opacity: 0.7;">{role_display}</div>
+            <div style="font-size: 0.9em; font-weight: 500; color: {text_color};">{current_user['full_name'] or current_user['username']}</div>
+            <div style="font-size: 0.75em; opacity: 0.7; color: {text_color};">{role_display}</div>
         </div>
     """, unsafe_allow_html=True)
     
