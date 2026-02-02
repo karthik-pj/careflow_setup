@@ -351,6 +351,38 @@ class PlannedGateway(Base):
     installed_gateway = relationship("Gateway")
 
 
+class User(Base):
+    """User account for authentication and access control"""
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True)
+    username = Column(String(100), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    email = Column(String(255))
+    full_name = Column(String(255))
+    role = Column(String(50), default='viewer')  # admin, operator, viewer
+    is_active = Column(Boolean, default=True)
+    last_login = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Page access permissions (JSON-like string for simplicity)
+    allowed_pages = Column(Text)  # Comma-separated list of allowed pages
+
+
+class UserSession(Base):
+    """User session tracking"""
+    __tablename__ = 'user_sessions'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    session_token = Column(String(255), unique=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    user = relationship("User")
+
+
 def get_engine():
     """Create database engine from environment variables (singleton)"""
     global _engine

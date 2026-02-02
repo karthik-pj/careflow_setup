@@ -18,6 +18,7 @@ TRANSLATIONS = {
         "nav_history": "History Playback",
         "nav_import_export": "Import/Export",
         "nav_signal_monitor": "Signal Monitor",
+        "nav_user_management": "User Management",
         
         # Dashboard
         "dashboard_title": "Dashboard",
@@ -183,6 +184,7 @@ TRANSLATIONS = {
         "nav_history": "Verlaufswiedergabe",
         "nav_import_export": "Import/Export",
         "nav_signal_monitor": "Signalmonitor",
+        "nav_user_management": "Benutzerverwaltung",
         
         # Dashboard
         "dashboard_title": "Dashboard",
@@ -348,6 +350,7 @@ TRANSLATIONS = {
         "nav_history": "Historique",
         "nav_import_export": "Import/Export",
         "nav_signal_monitor": "Moniteur de signal",
+        "nav_user_management": "Gestion des utilisateurs",
         
         # Dashboard
         "dashboard_title": "Tableau de bord",
@@ -513,6 +516,7 @@ TRANSLATIONS = {
         "nav_history": "Odtwarzanie historii",
         "nav_import_export": "Import/Eksport",
         "nav_signal_monitor": "Monitor sygnału",
+        "nav_user_management": "Zarządzanie użytkownikami",
         
         # Dashboard
         "dashboard_title": "Panel",

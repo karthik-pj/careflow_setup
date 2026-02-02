@@ -3,6 +3,10 @@ from database import init_db
 import base64
 from pathlib import Path
 from utils.translations import t, LANGUAGE_NAMES
+from utils.auth import (
+    is_logged_in, get_current_user, logout, ensure_demo_user,
+    can_access_page, require_page_access
+)
 
 st.set_page_config(
     page_title="Careflow Setup",
@@ -385,8 +389,14 @@ st.markdown("""
 
 try:
     init_db()
+    ensure_demo_user()
 except Exception as e:
     st.error(f"Database initialization error: {e}")
+
+if not is_logged_in():
+    from views import login
+    login.render()
+    st.stop()
 
 # Signal processor is manually started from MQTT Configuration page
 # This prevents auto-connection attempts that could slow down the app
@@ -567,9 +577,36 @@ else:
     )
 
 st.sidebar.markdown('<div class="careflow-subtitle">SENSOR INFRASTRUCTURE</div>', unsafe_allow_html=True)
+
+current_user = get_current_user()
+if current_user:
+    role_display = {'admin': '👑 Admin', 'operator': '🔧 Operator', 'viewer': '👁️ Viewer'}.get(current_user['role'], current_user['role'])
+    st.sidebar.markdown(f"""
+        <div style="background: rgba(46, 92, 191, 0.1); border: 1px solid rgba(46, 92, 191, 0.3); 
+                    border-radius: 8px; padding: 10px 12px; margin: 8px 0;">
+            <div style="font-size: 0.9em; font-weight: 500;">{current_user['full_name'] or current_user['username']}</div>
+            <div style="font-size: 0.75em; opacity: 0.7;">{role_display}</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    if st.sidebar.button("🚪 Logout", use_container_width=True):
+        logout()
+        st.rerun()
+
 st.sidebar.markdown("---")
 
-# Navigation with translations
+PAGE_ACCESS_MAP = {
+    "Dashboard": "dashboard",
+    "Buildings & Floor Plans": "buildings",
+    "Alert Zones": "alert_zones",
+    "Gateway Planning": "gateway_planning",
+    "Gateways": "gateways",
+    "Beacons": "beacons",
+    "MQTT Configuration": "mqtt",
+    "Live Monitoring": "live_tracking",
+    "User Management": "user_management"
+}
+
 nav_items = [
     ("Dashboard", "nav_dashboard"),
     ("Buildings & Floor Plans", "nav_buildings"),
@@ -581,10 +618,21 @@ nav_items = [
     ("Live Monitoring", "nav_live_tracking")
 ]
 
+if current_user and current_user['role'] == 'admin':
+    nav_items.append(("User Management", "nav_user_management"))
+
+filtered_nav_items = [
+    item for item in nav_items
+    if can_access_page(PAGE_ACCESS_MAP.get(item[0], item[0].lower().replace(' ', '_')))
+]
+
+if not filtered_nav_items:
+    filtered_nav_items = [("Dashboard", "nav_dashboard")]
+
 page = st.sidebar.radio(
     "Navigation",
-    [item[0] for item in nav_items],
-    format_func=lambda x: t(next(item[1] for item in nav_items if item[0] == x)),
+    [item[0] for item in filtered_nav_items],
+    format_func=lambda x: t(next(item[1] for item in filtered_nav_items if item[0] == x)),
     index=0,
     key="main_navigation"
 )
@@ -610,6 +658,11 @@ except Exception:
     st.sidebar.markdown(f'<div style="background:#888;color:white;padding:8px 12px;border-radius:4px;font-size:0.9em;"><span style="margin-right:6px;">●</span>{t("signal_processor_not_init")}</div>', unsafe_allow_html=True)
 
 
+page_id = PAGE_ACCESS_MAP.get(page, "dashboard")
+if not can_access_page(page_id):
+    st.error("You don't have permission to access this page.")
+    st.stop()
+
 if page == "Dashboard":
     from views import dashboard
     dashboard.render()
@@ -634,3 +687,6 @@ elif page == "MQTT Configuration":
 elif page == "Live Monitoring":
     from views import live_tracking
     live_tracking.render()
+elif page == "User Management":
+    from views import user_management
+    user_management.render()
