@@ -128,6 +128,39 @@ def render_user_list():
                             session.commit()
                             st.success(f"User {user.username} deleted.")
                             st.rerun()
+                
+                st.markdown("##### Change Password")
+                pwd_col1, pwd_col2, pwd_col3 = st.columns([2, 2, 1])
+                with pwd_col1:
+                    new_password = st.text_input(
+                        "New Password",
+                        type="password",
+                        placeholder="Enter new password",
+                        key=f"new_pwd_{user.id}"
+                    )
+                with pwd_col2:
+                    confirm_new_password = st.text_input(
+                        "Confirm Password",
+                        type="password",
+                        placeholder="Confirm password",
+                        key=f"confirm_pwd_{user.id}"
+                    )
+                with pwd_col3:
+                    st.write("")
+                    st.write("")
+                    if st.button("Change", key=f"change_pwd_{user.id}"):
+                        if not new_password:
+                            st.error("Please enter a new password.")
+                        elif len(new_password) < 6:
+                            st.error("Password must be at least 6 characters.")
+                        elif new_password != confirm_new_password:
+                            st.error("Passwords do not match.")
+                        else:
+                            user.password_hash = hash_password(new_password)
+                            user.updated_at = datetime.utcnow()
+                            session.commit()
+                            st.success(f"Password changed for {user.username}.")
+                            st.rerun()
 
 
 def render_add_user_form():

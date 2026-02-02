@@ -42,7 +42,11 @@ def render():
                 st.rerun()
         return
     
-    st.markdown('<h1 class="login-title">Careflow Login</h1>', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("attached_assets/CAREFLOW LOGO-Color_1764612034940.png", use_container_width=True)
+    
+    st.markdown('<h2 class="login-title">Login</h2>', unsafe_allow_html=True)
     
     with st.form("login_form"):
         username = st.text_input("Username", placeholder="Enter username")
