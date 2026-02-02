@@ -580,7 +580,7 @@ st.sidebar.markdown('<div class="careflow-subtitle">SENSOR INFRASTRUCTURE</div>'
 
 current_user = get_current_user()
 if current_user:
-    role_display = {'admin': '👑 Admin', 'operator': '🔧 Operator', 'viewer': '👁️ Viewer'}.get(current_user['role'], current_user['role'])
+    role_display = {'admin': 'Admin', 'operator': 'Operator', 'viewer': 'Viewer'}.get(current_user['role'], current_user['role'])
     st.sidebar.markdown(f"""
         <div style="background: rgba(46, 92, 191, 0.1); border: 1px solid rgba(46, 92, 191, 0.3); 
                     border-radius: 8px; padding: 10px 12px; margin: 8px 0;">
