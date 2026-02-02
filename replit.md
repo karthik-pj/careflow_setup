@@ -41,6 +41,12 @@ The application uses a Streamlit-based interface.
 *   **MQTT Publisher:** Thread-safe singleton with an async message queue for non-blocking publishing of beacon positions and zone alerts.
 *   **Processing Settings:** Configurable refresh rate, signal window, RSSI smoothing, position smoothing (exponential), and stability threshold to prevent phantom drift.
 *   **Security:** MQTT passwords are referenced by environment variables (e.g., `MQTT_PASSWORD`) and not stored in the database.
+*   **User Authentication:** Role-based access control with three levels:
+    *   **Admin:** Full access to all pages including User Management.
+    *   **Operator:** Access to Dashboard, Live Monitoring, Gateways, Beacons, Buildings.
+    *   **Viewer:** Read-only access to Dashboard and Live Monitoring.
+    *   Session management with 24-hour token expiry, SHA256 password hashing.
+    *   Demo accounts: `admin/admin123` (admin), `demo/demo123` (operator).
 
 ### Feature Specifications
 *   **Building Management:** Create buildings and multi-story floor plans with GPS coordinates.
