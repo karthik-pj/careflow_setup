@@ -670,47 +670,25 @@ else:
         <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
     </svg>'''
 
-st.markdown(f"""
-<div class="header-controls">
-    <div class="lang-selector-wrapper">
-        {globe_svg}
-        <select id="langSelect" onchange="handleLangChange(this.value)">
-            {lang_options_html}
-        </select>
-    </div>
-    <button class="theme-toggle-btn" onclick="handleThemeToggle()" title="Toggle Dark/Light Mode">
-        {theme_svg}
-    </button>
-</div>
-<script>
-    function handleLangChange(lang) {{
-        const params = new URLSearchParams(window.location.search);
-        params.set('lang', lang);
-        window.location.search = params.toString();
-    }}
-    function handleThemeToggle() {{
-        const params = new URLSearchParams(window.location.search);
-        params.set('toggle_theme', 'true');
-        window.location.search = params.toString();
-    }}
-</script>
-""", unsafe_allow_html=True)
-
-# Handle URL parameters for language and theme changes
-query_params = st.query_params
-if 'lang' in query_params:
-    new_lang = query_params['lang']
-    if new_lang in lang_options and new_lang != st.session_state.language:
-        st.session_state.language = new_lang
-        st.query_params.clear()
+header_col1, header_col2, header_col3 = st.columns([8, 1, 1])
+with header_col2:
+    selected_lang = st.selectbox(
+        "Language",
+        options=lang_options,
+        index=lang_options.index(current_lang),
+        format_func=lambda x: LANGUAGE_NAMES[x],
+        key="lang_selector",
+        label_visibility="collapsed"
+    )
+    if selected_lang != st.session_state.language:
+        st.session_state.language = selected_lang
         st.rerun()
-    elif new_lang == st.session_state.language:
-        st.query_params.clear()
 
-if 'toggle_theme' in query_params:
-    st.session_state.dark_mode = not st.session_state.dark_mode
-    st.query_params.clear()
-    st.rerun()
+with header_col3:
+    theme_icon = "🌙" if st.session_state.dark_mode else "☀️"
+    if st.button(theme_icon, key="theme_toggle", help="Toggle Dark/Light Mode"):
+        st.session_state.dark_mode = not st.session_state.dark_mode
+        st.rerun()
 
 # Sidebar logo
 logo_path = Path("attached_assets/CAREFLOW LOGO-Color_1764612034940.png")
