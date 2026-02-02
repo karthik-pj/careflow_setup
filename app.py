@@ -589,7 +589,7 @@ if current_user:
         </div>
     """, unsafe_allow_html=True)
     
-    if st.sidebar.button("🚪 Logout", use_container_width=True):
+    if st.sidebar.button("Logout", use_container_width=True):
         logout()
         st.rerun()
 

@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.auth import authenticate_user, is_logged_in, logout, DEMO_USERNAME, DEMO_PASSWORD
+from utils.auth import authenticate_user, is_logged_in, logout
 from utils.translations import t
 
 
@@ -64,14 +64,3 @@ def render():
                 st.rerun()
             else:
                 st.error("Invalid username or password.")
-    
-    st.markdown(f"""
-        <div class="demo-box">
-            <strong>Demo Account:</strong><br>
-            Username: <code>{DEMO_USERNAME}</code><br>
-            Password: <code>{DEMO_PASSWORD}</code><br><br>
-            <strong>Admin Account:</strong><br>
-            Username: <code>admin</code><br>
-            Password: <code>admin123</code>
-        </div>
-    """, unsafe_allow_html=True)
