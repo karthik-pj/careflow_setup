@@ -9,7 +9,7 @@ from utils.auth import (
 )
 
 st.set_page_config(
-    page_title="Careflow Setup",
+    page_title="CareSet",
     page_icon="📍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -875,7 +875,7 @@ if logo_path.exists():
     with open(logo_path, "rb") as f:
         logo_data = base64.b64encode(f.read()).decode()
     st.sidebar.markdown(
-        f'<div class="logo-container"><img src="data:image/png;base64,{logo_data}" alt="Careflow"></div>',
+        f'<div class="logo-container"><img src="data:image/png;base64,{logo_data}" alt="CareSet"></div>',
         unsafe_allow_html=True
     )
 else:
