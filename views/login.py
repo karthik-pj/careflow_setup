@@ -2,6 +2,7 @@ import streamlit as st
 from utils.auth import authenticate_user, is_logged_in, logout
 from utils.translations import t
 
+LANGUAGE_NAMES = {"en": "EN", "de": "DE", "fr": "FR", "pl": "PL"}
 
 def render():
     st.markdown("""
@@ -26,6 +27,33 @@ def render():
         }
         </style>
     """, unsafe_allow_html=True)
+    
+    # Language and theme selectors at top right
+    lang_options = list(LANGUAGE_NAMES.keys())
+    current_lang = st.session_state.get('language', 'en')
+    if current_lang not in lang_options:
+        current_lang = 'en'
+    
+    header_col1, header_col2, header_col3 = st.columns([10, 1, 1])
+    with header_col2:
+        selected_lang = st.selectbox(
+            "Language",
+            options=lang_options,
+            index=lang_options.index(current_lang),
+            format_func=lambda x: LANGUAGE_NAMES[x],
+            key="login_lang_selector",
+            label_visibility="collapsed"
+        )
+        if selected_lang != st.session_state.get('language', 'en'):
+            st.session_state.language = selected_lang
+            st.rerun()
+
+    with header_col3:
+        dark_mode = st.session_state.get('dark_mode', True)
+        theme_label = "☽" if dark_mode else "☀"
+        if st.button(theme_label, key="login_theme_toggle", help="Toggle Dark/Light Mode"):
+            st.session_state.dark_mode = not dark_mode
+            st.rerun()
     
     if is_logged_in():
         user = st.session_state.user
