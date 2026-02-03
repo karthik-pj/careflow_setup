@@ -68,3 +68,14 @@ def render():
                 st.rerun()
             else:
                 st.error("Invalid username or password.")
+    
+    # Footer
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("---")
+    dark_mode = st.session_state.get('dark_mode', True)
+    footer_color = "#a0aec0" if dark_mode else "#64748b"
+    st.markdown(f"""
+    <div style="text-align: center; padding: 1rem 0; color: {footer_color}; font-size: 0.8rem;">
+        ©2026 CareFlow Systems GmbH, CareSet V 1.1.0
+    </div>
+    """, unsafe_allow_html=True)
