@@ -883,7 +883,7 @@ else:
         '<div style="font-family: Inter, sans-serif; font-size: 1.8rem; font-weight: 700; '
         'background: linear-gradient(135deg, #2e5cbf 0%, #008ed3 100%); '
         '-webkit-background-clip: text; -webkit-text-fill-color: transparent; '
-        'background-clip: text; margin-bottom: 0.5rem;">CareFlow</div>',
+        'background-clip: text; margin-bottom: 0.5rem;">CareSet</div>',
         unsafe_allow_html=True
     )
 
