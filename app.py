@@ -901,3 +901,12 @@ elif page == "Live Monitoring":
 elif page == "User Management":
     from views import user_management
     user_management.render()
+
+# Footer
+st.markdown("---")
+footer_color = "#a0aec0" if st.session_state.dark_mode else "#64748b"
+st.markdown(f"""
+<div style="text-align: center; padding: 1rem 0; color: {footer_color}; font-size: 0.8rem;">
+    ©2026 CareFlow Systems GmbH, CareSet V 1.1.0
+</div>
+""", unsafe_allow_html=True)
