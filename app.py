@@ -212,14 +212,90 @@ else:
         border-color: #2563eb !important;
     }
     
-    /* Selectbox - Light */
-    .stSelectbox > div > div {
+    /* Selectbox - Light - Comprehensive */
+    .stSelectbox > div > div,
+    .stSelectbox [data-baseweb="select"],
+    .stSelectbox [data-baseweb="select"] > div,
+    .stSelectbox [data-baseweb="popover"],
+    [data-baseweb="select"] > div,
+    [data-baseweb="popover"] > div {
         background-color: #ffffff !important;
         border-color: #e2e8f0 !important;
+        color: #1e293b !important;
     }
     
-    .stSelectbox [data-baseweb="select"] > div {
+    /* Dropdown menu/list - Light */
+    [data-baseweb="menu"],
+    [data-baseweb="popover"] ul,
+    [data-baseweb="listbox"],
+    .stSelectbox ul,
+    div[role="listbox"],
+    ul[role="listbox"] {
         background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    
+    [data-baseweb="menu"] li,
+    [data-baseweb="listbox"] li,
+    div[role="listbox"] li,
+    ul[role="listbox"] li,
+    [data-baseweb="menu"] [role="option"],
+    div[role="option"] {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+    }
+    
+    [data-baseweb="menu"] li:hover,
+    [data-baseweb="listbox"] li:hover,
+    div[role="option"]:hover {
+        background-color: #f1f5f9 !important;
+    }
+    
+    /* Slider - Light */
+    .stSlider > div > div > div {
+        background-color: #e2e8f0 !important;
+    }
+    
+    .stSlider [data-baseweb="slider"] > div {
+        background-color: #e2e8f0 !important;
+    }
+    
+    .stSlider [role="slider"] {
+        background-color: #2563eb !important;
+    }
+    
+    /* Checkbox and Radio - Light */
+    .stCheckbox label,
+    .stRadio label {
+        color: #1e293b !important;
+    }
+    
+    /* Multiselect - Light */
+    .stMultiSelect > div > div,
+    .stMultiSelect [data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        border-color: #e2e8f0 !important;
+        color: #1e293b !important;
+    }
+    
+    .stMultiSelect [data-baseweb="tag"] {
+        background-color: #e2e8f0 !important;
+        color: #1e293b !important;
+    }
+    
+    /* Date/Time inputs - Light */
+    .stDateInput > div > div,
+    .stTimeInput > div > div {
+        background-color: #ffffff !important;
+        border-color: #e2e8f0 !important;
+        color: #1e293b !important;
+    }
+    
+    /* Number input - Light */
+    .stNumberInput > div > div > input {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border-color: #e2e8f0 !important;
     }
     
     /* Input fields - Light */
@@ -227,6 +303,31 @@ else:
         background-color: #ffffff !important;
         color: #1e293b !important;
         border-color: #e2e8f0 !important;
+    }
+    
+    /* File uploader - Light */
+    .stFileUploader > div {
+        background-color: #f8fafc !important;
+        border-color: #e2e8f0 !important;
+    }
+    
+    .stFileUploader label {
+        color: #1e293b !important;
+    }
+    
+    /* Color picker - Light */
+    .stColorPicker > div {
+        background-color: #ffffff !important;
+    }
+    
+    /* Toggle/Switch - Light */
+    [data-baseweb="checkbox"] span {
+        background-color: #e2e8f0 !important;
+    }
+    
+    /* All form elements placeholder text */
+    ::placeholder {
+        color: #94a3b8 !important;
     }
     
     /* Cards and containers - Light */
