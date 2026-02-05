@@ -1,0 +1,116 @@
+================================================================================
+CAREFLOW SYSTEM COMPARISON: Yesterday (Jan 29, 18:00 CET) vs Now
+================================================================================
+Generated: January 30, 2026
+
+SITUATION YESTERDAY (Jan 29, 2026 ~18:00 CET):
+------------------------------------------------------------------------------
+- All 3 gateways (CFS1, CFS2, CFS3) were connected and showing data
+- Auto-discovery was ON
+- Many unwanted beacons were being detected (not the installed ones)
+- You turned auto-discovery OFF to stop the flood of unknown beacons
+
+SITUATION NOW:
+------------------------------------------------------------------------------
+- CFS1: Connected and actively publishing beacon data
+- CFS2: Shows as "Installed" (connected to EMQX but NOT publishing beacon data)
+- CFS3: Shows as "Installed" (connected to EMQX but NOT publishing beacon data)
+- Auto-discovery: OFF (intentionally disabled)
+
+================================================================================
+MQTT DATA FLOW ANALYSIS
+================================================================================
+
+WHAT'S HAPPENING WITH EACH GATEWAY:
+
+CFS1 (00:E0:4C:00:6B:F1):
+  Status: ACTIVE - Publishing data every ~2 seconds
+  Topic: /cfs1/00e04c006bf1/publish
+  Beacons detected: 21baa114b3ed, c02ced793725, 6fd7d54bdbbb, etc.
+  
+CFS2 (00:E0:4C:00:6B:E5):
+  Status: SILENT - Connected to EMQX but NOT publishing any beacon data
+  Expected topic: /cfs2/00e04c006be5/publish
+  Last seen publishing: Unknown (no recent data in logs)
+  
+CFS3 (00:E0:4C:00:6C:A5):
+  Status: SILENT - Connected to EMQX but NOT publishing any beacon data  
+  Expected topic: /cfs3/00e04c006ca5/publish
+  Last seen publishing: Unknown (no recent data in logs)
+
+================================================================================
+ROOT CAUSE ANALYSIS
+================================================================================
+
+The issue is NOT with the Careflow application - it's with the gateways themselves:
+
+1. CFS2 and CFS3 are connected to the MQTT broker (EMQX shows them connected)
+2. BUT they are NOT publishing any beacon scan data
+3. This could be caused by:
+   a) Gateway configuration issue (scan interval, BLE settings)
+   b) Gateway firmware/software problem
+   c) Gateway power cycle needed
+   d) Network connectivity issue between gateway and broker
+   e) The gateways may be in a "listening" mode but not "scanning" mode
+
+REGISTERED BEACONS (what you WANT to track):
+------------------------------------------------------------------------------
+| MAC Address         | Name               | Type    | Active |
+|---------------------|--------------------|---------| -------|
+| C9:02:4A:14:5E:61   | Beatmungsgerät 123 | Asset   | Yes    |
+| C1:1B:8B:E4:9A:E1   | Wristband 2        | Staff   | Yes    |
+| FB:80:BF:BA:0E:9F   | EKG Monitor Wagen  | Vehicle | Yes    |
+| E4:66:D8:C7:01:18   | Wristband 1        | Staff   | No     |
+| C9:29:EF:22:38:EA   | Asset Tag 1        | Device  | No     |
+| C2:AD:1E:A5:CB:33   | Asset Tag 2        | Device  | No     |
+
+BEACONS BEING DETECTED (by CFS1):
+------------------------------------------------------------------------------
+| MAC (formatted)     | Notes                                    |
+|---------------------|------------------------------------------|
+| 21:BA:A1:14:B3:ED   | Unknown - NOT in registered list         |
+| C0:2C:ED:79:37:25   | Unknown - NOT in registered list         |
+| 6F:D7:D5:4B:DB:BB   | Unknown - NOT in registered list         |
+| 31:9A:B8:1B:0E:A9   | Unknown - NOT in registered list         |
+| 57:F3:02:99:37:E8   | Unknown - NOT in registered list         |
+| 25:BE:2D:5C:AA:93   | Unknown - NOT in registered list         |
+| 3D:06:B0:24:4A:9F   | Unknown - NOT in registered list         |
+
+MATCH STATUS: ZERO MATCHES between detected and registered beacons!
+
+================================================================================
+WHY NO DATA IS BEING STORED
+================================================================================
+
+The Careflow application is working correctly, but:
+
+1. Auto-discovery = OFF (you disabled it)
+2. Only signals from REGISTERED beacons are stored
+3. None of the beacons being detected by CFS1 are registered
+4. Therefore: 0 signals stored
+
+This is EXPECTED BEHAVIOR given your configuration.
+
+================================================================================
+ACTION ITEMS TO FIX
+================================================================================
+
+IMMEDIATE - Check CFS2 and CFS3 gateways:
+1. Verify they are powered on and have network connectivity
+2. Check their configuration in the Moko gateway app/web interface
+3. Ensure they are set to actively scan and publish beacon data
+4. Try power cycling both gateways
+
+TO GET DATA FLOWING:
+Option A: Place your REGISTERED beacons (Wristband 2, Beatmungsgerät, EKG Monitor) 
+          near CFS1 gateway - they should then be detected and stored
+
+Option B: Register one of the detected beacons for testing:
+          e.g., Add beacon with MAC 21:BA:A1:14:B3:ED as "Test Beacon"
+
+Option C: Temporarily enable auto-discovery to see all beacons, then 
+          disable again after registering the ones you want
+
+================================================================================
+END OF ANALYSIS
+================================================================================
